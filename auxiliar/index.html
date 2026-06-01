@@ -268,7 +268,54 @@
           </div>
         </div>
         <div class="form-body">
-          ${d._novo?`<div class="fg"><label>Veículo (número/placa)</label><input id="f-VEICULO" type="text" placeholder="Ex: 064 LUV 9296"></div>`:`<div class="fro"><span>Veículo</span><span>${d.VEICULO||'—'}</span></div>`}
+          ${d._novo?`<div class="fg"><label>Veículo</label>
+          <select id="f-VEICULO">
+            <option value="">Selecione o veículo</option>
+            <option value="063 LBW 8156">063 LBW 8156</option>
+            <option value="064 LUV 9296">064 LUV 9296</option>
+            <option value="065 KZQ 9648">065 KZQ 9648</option>
+            <option value="066 LUB 1400">066 LUB 1400</option>
+            <option value="067 LUX 9063">067 LUX 9063</option>
+            <option value="068 LSN 1702">068 LSN 1702</option>
+            <option value="074 LKK 6551">074 LKK 6551</option>
+            <option value="075 KUT 8573">075 KUT 8573</option>
+            <option value="088 KYP 3601">088 KYP 3601</option>
+            <option value="091 KPE 2252">091 KPE 2252</option>
+            <option value="092 LSF 4199">092 LSF 4199</option>
+            <option value="093 KVF 3715">093 KVF 3715</option>
+            <option value="094 KQT 1919">094 KQT 1919</option>
+            <option value="095 LTJ 4440">095 LTJ 4440</option>
+            <option value="096 KQS 2672">096 KQS 2672</option>
+            <option value="097 LRX 4831">097 LRX 4831</option>
+            <option value="098 LRX 4828">098 LRX 4828</option>
+            <option value="099 LRX 4830">099 LRX 4830</option>
+            <option value="100 LRX 4829">100 LRX 4829</option>
+            <option value="101 LRX 4832">101 LRX 4832</option>
+            <option value="102 LRT 4821">102 LRT 4821</option>
+            <option value="103 KWB 9779">103 KWB 9779</option>
+            <option value="104 LRC 3089">104 LRC 3089</option>
+            <option value="105 KPU 7450">105 KPU 7450</option>
+            <option value="106 LSZ 5959">106 LSZ 5959</option>
+            <option value="107 LRR 8757">107 LRR 8757</option>
+            <option value="108 LSM 7748">108 LSM 7748</option>
+            <option value="109 LSM 7749">109 LSM 7749</option>
+            <option value="110 LSM 7750">110 LSM 7750</option>
+            <option value="111 KRO 8527">111 KRO 8527</option>
+            <option value="112 KRO 8528">112 KRO 8528</option>
+            <option value="113 KXU 6988">113 KXU 6988</option>
+            <option value="114 KXU 6989">114 KXU 6989</option>
+            <option value="115 KXW 7716">115 KXW 7716</option>
+            <option value="116 LSQ 6092">116 LSQ 6092</option>
+            <option value="117 KRR 2728">117 KRR 2728</option>
+            <option value="118 LSQ 6093">118 LSQ 6093</option>
+            <option value="119 LRP 8A18">119 LRP 8A18</option>
+            <option value="120 LTF 9726">120 LTF 9726</option>
+            <option value="121 KRZ 8143">121 KRZ 8143</option>
+            <option value="122 DPF 7I23">122 DPF 7I23</option>
+            <option value="123 ATJ3F42">123 ATJ3F42</option>
+            <option value="124 ATI4G85">124 ATI4G85</option>
+            <option value="125 OWO2F73">125 OWO2F73</option>
+          </select></div>`:`<div class="fro"><span>Veículo</span><span>${d.VEICULO||'—'}</span></div>`}
 
           <div class="sec-title">📋 Dados da Base</div>
           ${fg('MOTORISTA','Motorista','text', d.MOTORISTA)}
