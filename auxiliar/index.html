@@ -16,12 +16,9 @@
     import { initializeApp }                        from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
     import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile }
                                                     from "https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js";
-    import { getFirestore, doc, setDoc, getDoc, collection, query, where, onSnapshot, serverTimestamp }
+    import { getFirestore, doc, setDoc, getDoc, collection, query, where, onSnapshot, serverTimestamp, getDocs, orderBy }
                                                     from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
 
-    // ═══════════════════════════════════════════════════════════════
-    //  SUBSTITUA PELOS DADOS DO SEU PROJETO FIREBASE
-    // ═══════════════════════════════════════════════════════════════
     const FIREBASE_CONFIG = {
       apiKey:            "AIzaSyA211lxR6Nk3bWH8lJWzYkHTMnlfHPar8A",
       authDomain:        "frota-field.firebaseapp.com",
@@ -39,10 +36,7 @@
     let currentPerfil = null;
     let veiculosHoje  = [];
 
-    // ── utilidades ──────────────────────────────────────────────────
     const $ = id => document.getElementById(id);
-    const show = id => $(id) && ($(id).style.display = 'flex');
-    const hide = id => $(id) && ($(id).style.display = 'none');
 
     function hojeISO() {
       const d = new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Sao_Paulo'}));
@@ -57,27 +51,97 @@
       const d = new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Sao_Paulo'}));
       return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
     }
+    function ontemISO() {
+      const d = new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Sao_Paulo'}));
+      d.setDate(d.getDate() - 1);
+      return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getFullYear()).slice(-2)}`;
+    }
 
-    // campos calculados
     const toMin = t => { if(!t) return 0; const [h,m] = t.split(':').map(Number); return h*60+m; };
-    const toHM  = m => `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`;
+    const toHM  = m => `${String(Math.floor(m/60) % 24).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`;
     const calcPrevisao   = on  => on  ? toHM((toMin(on)+300)%1440) : '';
     const calcHoraTotal  = (on,off) => on&&off ? toHM(Math.max(0,toMin(off)-toMin(on))) : '';
     const calcKmPerc     = (s,c)   => s&&c ? String(Math.max(0,Number(c)-Number(s))) : '';
     const calcTL         = (ab,sa) => ab&&sa ? toHM(Math.max(0,toMin(sa)-toMin(ab))) : '';
     const calcTotalLoja  = (t1,t2) => { const a=toMin(t1),b=toMin(t2); return (a||b)?toHM(a+b):''; };
 
-    // ── AUTH STATE ───────────────────────────────────────────────────
+    // ── DISPONIBILIDADE DO MOTORISTA ─────────────────────────────────
+    // Busca todos os lançamentos do motorista no dia anterior
+    // e calcula PRÓX_HORA_DISP = TOTAL_LOJA + 11h do último lançamento
+    async function buscarDisponibilidade(motorista) {
+      if (!motorista) return null;
+      try {
+        const ontem = ontemISO();
+        const q = query(
+          collection(db, 'lancamentos'),
+          where('MOTORISTA', '==', motorista),
+          where('DATA', '==', ontem)
+        );
+        const snap = await getDocs(q);
+        if (snap.empty) return null;
+
+        // Pega o lançamento com maior TOTAL_LOJA (último serviço)
+        let melhor = null;
+        snap.forEach(d => {
+          const dado = d.data();
+          const tl = dado.TOTAL_LOJA || dado.TOTAL_LOJA_2 || dado.TOTAL_LOJA_1 || '';
+          const poff = dado.PONTO_OFF_MOT || dado.PONTO_OFF_MOTO || '';
+          if (!melhor) { melhor = dado; return; }
+          // Prefere TOTAL_LOJA maior
+          if (tl && toMin(tl) > toMin(melhor.TOTAL_LOJA || '')) melhor = dado;
+          else if (!tl && poff && toMin(poff) > toMin(melhor.PONTO_OFF_MOT || '')) melhor = dado;
+        });
+
+        if (!melhor) return null;
+
+        // Usa TOTAL_LOJA como base, fallback para PONTO_OFF
+        const base = melhor.TOTAL_LOJA || melhor.PONTO_OFF_MOT || melhor.PONTO_OFF_MOTO || '';
+        if (!base) return null;
+
+        // PRÓX_HORA_DISP = base + 11h
+        const proxMin = (toMin(base) + 11 * 60) % 1440;
+        return toHM(proxMin);
+      } catch(e) {
+        console.warn('Erro ao buscar disponibilidade:', e);
+        return null;
+      }
+    }
+
+    // Mostra ou esconde o aviso de disponibilidade
+    async function atualizarDisponibilidade() {
+      const sel = $('f-MOTORISTA');
+      const aviso = $('aviso-disp');
+      if (!sel || !aviso) return;
+      const motorista = sel.value;
+      if (!motorista) { aviso.style.display = 'none'; return; }
+
+      aviso.style.display = 'block';
+      aviso.style.background = '#ffffff10';
+      aviso.style.color = 'var(--muted)';
+      aviso.textContent = '⏳ Verificando disponibilidade...';
+
+      const proxHora = await buscarDisponibilidade(motorista);
+      if (!proxHora) {
+        aviso.style.background = '#00c9a715';
+        aviso.style.color = 'var(--acc2)';
+        aviso.textContent = '✅ Sem registro ontem — disponível';
+      } else {
+        aviso.style.background = '#f0a50015';
+        aviso.style.color = 'var(--acc)';
+        aviso.textContent = `⏰ Próxima disponibilidade: ${proxHora}`;
+        // Guarda horário para validação ao salvar
+        aviso.dataset.proxHora = proxHora;
+      }
+    }
+
     let cadastrandoAgora = false;
 
     onAuthStateChanged(auth, async user => {
       if (!user) { mostrarTela('login'); return; }
-      if (cadastrandoAgora) return; // aguarda cadastro terminar
+      if (cadastrandoAgora) return;
       currentUser = user;
       const snap = await getDoc(doc(db,'usuarios', user.uid));
       if (!snap.exists()) {
-        // Documento ainda não existe — pode ser cadastro em andamento
-        // Aguarda 2s e tenta novamente
         setTimeout(async () => {
           const snap2 = await getDoc(doc(db,'usuarios', user.uid));
           if (!snap2.exists()) { await signOut(auth); mostrarTela('login'); return; }
@@ -96,8 +160,6 @@
       await signOut(auth); mostrarTela('login');
     });
 
-    // ── TELAS ────────────────────────────────────────────────────────
-    // ── TELAS ────────────────────────────────────────────────────────
     function mostrarTela(nome) {
       ['login','cadastro','aguardando','bloqueado'].forEach(t => {
         const el = $(t+'-tela');
@@ -106,7 +168,7 @@
       const appEl  = $('app-tela');
       const formEl = $('form-tela');
       if (appEl) appEl.style.display = 'none';
-      if (nome === 'login')      { $('login-tela').style.display='flex'; }
+      if (nome === 'login')          { $('login-tela').style.display='flex'; }
       else if (nome==='cadastro')    { $('cadastro-tela').style.display='flex'; }
       else if (nome==='aguardando')  { $('aguardando-tela').style.display='flex'; }
       else if (nome==='bloqueado')   { $('bloqueado-tela').style.display='flex'; }
@@ -122,7 +184,6 @@
       }
     }
 
-    // ── LOGIN ────────────────────────────────────────────────────────
     window.fazerLogin = async () => {
       const email = $('l-email').value.trim();
       const senha = $('l-senha').value;
@@ -141,7 +202,6 @@
     window.irLogin     = () => mostrarTela('login');
     window.fazerLogout = () => signOut(auth);
 
-    // ── CADASTRO ─────────────────────────────────────────────────────
     window.fazerCadastro = async () => {
       const nome  = $('c-nome').value.trim();
       const email = $('c-email').value.trim();
@@ -149,36 +209,24 @@
       const op    = $('c-op').value;
       const cargo = $('c-cargo').value;
       const btn   = $('btn-cadastro');
-
-      if (!nome||!email||!senha||!op||!cargo) {
-        erroCadastro('Preencha todos os campos.'); return;
-      }
+      if (!nome||!email||!senha||!op||!cargo) { erroCadastro('Preencha todos os campos.'); return; }
       if (senha.length < 6) { erroCadastro('Senha mínima: 6 caracteres.'); return; }
-
       btn.disabled=true; btn.textContent='Cadastrando...';
       try {
-        // Tenta criar usuário no Auth
         let uid;
         try {
           const cred = await createUserWithEmailAndPassword(auth, email, senha);
           await updateProfile(cred.user, { displayName: nome });
           uid = cred.user.uid;
         } catch(authErr) {
-          // Se já existe no Auth, faz login para pegar o UID
           if (authErr.code === 'auth/email-already-in-use') {
             const cred2 = await signInWithEmailAndPassword(auth, email, senha);
             uid = cred2.user.uid;
-          } else {
-            throw authErr;
-          }
+          } else { throw authErr; }
         }
-        // Salva no Firestore
         await setDoc(doc(db,'usuarios', uid), {
-          uid, nome, email, op, cargo,
-          status: 'pendente',
-          criadoEm: serverTimestamp()
+          uid, nome, email, op, cargo, status: 'pendente', criadoEm: serverTimestamp()
         });
-        // onAuthStateChanged vai pegar e mostrar tela aguardando
       } catch(e) {
         console.error('Erro cadastro:', e);
         erroCadastro(e.code ? e.code : ('Erro: ' + e.message));
@@ -187,7 +235,6 @@
     };
     function erroCadastro(msg) { $('erro-cadastro').textContent=msg; $('erro-cadastro').style.display='block'; }
 
-    // ── APP PRINCIPAL ─────────────────────────────────────────────────
     function iniciarApp() {
       $('nome-usuario').textContent = currentPerfil.nome;
       $('tag-op').textContent       = currentPerfil.op;
@@ -243,7 +290,6 @@
       }).join('');
     }
 
-    // ── FORMULÁRIO ────────────────────────────────────────────────────
     let dadosForm = null;
 
     window.apagarLancamento = async (fid) => {
@@ -328,23 +374,55 @@
 
           <div class="sec-title">📋 Dados da Base</div>
           <div class="fg"><label>Motorista</label>
-          <select id="f-MOTORISTA">
+          <select id="f-MOTORISTA" onchange="atualizarDisponibilidade()">
             <option value="">Selecione o motorista</option>
-            <option>ALEXANDRE</option><option>DANIEL</option><option>DEVANILSO</option>
-            <option>HERIBERTO</option><option>SÉRGIO</option><option>ANTÔNIO</option>
-            <option>CAMARA</option><option>NEVES</option><option>VALDIR</option>
-            <option>ROGERIO</option><option>EDILSON</option><option>SÉRGIO SILVA</option>
-            <option>GILMAR</option><option>SANDRO</option><option>LUIZ</option>
-            <option>MEDEIROS</option><option>NOGUEIRA</option><option>RICARDO</option>
-            <option>EDUARDO</option><option>CLAUDINEI</option><option>DUARTE</option>
-            <option>ROBERTO</option><option>ROSENDO</option><option>ANDERSON</option>
-            <option>ISAÍAS</option><option>RENÊ</option><option>ADRIANO</option>
-            <option>JOEL</option><option>WALMIR</option><option>ANDRÉ</option>
-            <option>VAGNER</option><option>CÉLIO</option><option>OLIVEIRA</option>
-            <option>MARCIO</option><option>ROBSON</option><option>THIAGO</option>
-            <option>CARLOS</option><option>MARCELO</option><option>VITOR</option>
-            <option>EDSON</option><option>LEONARDO</option><option>EDILEI</option>
+            <option${d.MOTORISTA==='ALEXANDRE'?' selected':''}>ALEXANDRE</option>
+            <option${d.MOTORISTA==='DANIEL'?' selected':''}>DANIEL</option>
+            <option${d.MOTORISTA==='DEVANILSO'?' selected':''}>DEVANILSO</option>
+            <option${d.MOTORISTA==='HERIBERTO'?' selected':''}>HERIBERTO</option>
+            <option${d.MOTORISTA==='SÉRGIO'?' selected':''}>SÉRGIO</option>
+            <option${d.MOTORISTA==='ANTÔNIO'?' selected':''}>ANTÔNIO</option>
+            <option${d.MOTORISTA==='CAMARA'?' selected':''}>CAMARA</option>
+            <option${d.MOTORISTA==='NEVES'?' selected':''}>NEVES</option>
+            <option${d.MOTORISTA==='VALDIR'?' selected':''}>VALDIR</option>
+            <option${d.MOTORISTA==='ROGERIO'?' selected':''}>ROGERIO</option>
+            <option${d.MOTORISTA==='EDILSON'?' selected':''}>EDILSON</option>
+            <option${d.MOTORISTA==='SÉRGIO SILVA'?' selected':''}>SÉRGIO SILVA</option>
+            <option${d.MOTORISTA==='GILMAR'?' selected':''}>GILMAR</option>
+            <option${d.MOTORISTA==='SANDRO'?' selected':''}>SANDRO</option>
+            <option${d.MOTORISTA==='LUIZ'?' selected':''}>LUIZ</option>
+            <option${d.MOTORISTA==='MEDEIROS'?' selected':''}>MEDEIROS</option>
+            <option${d.MOTORISTA==='NOGUEIRA'?' selected':''}>NOGUEIRA</option>
+            <option${d.MOTORISTA==='RICARDO'?' selected':''}>RICARDO</option>
+            <option${d.MOTORISTA==='EDUARDO'?' selected':''}>EDUARDO</option>
+            <option${d.MOTORISTA==='CLAUDINEI'?' selected':''}>CLAUDINEI</option>
+            <option${d.MOTORISTA==='DUARTE'?' selected':''}>DUARTE</option>
+            <option${d.MOTORISTA==='ROBERTO'?' selected':''}>ROBERTO</option>
+            <option${d.MOTORISTA==='ROSENDO'?' selected':''}>ROSENDO</option>
+            <option${d.MOTORISTA==='ANDERSON'?' selected':''}>ANDERSON</option>
+            <option${d.MOTORISTA==='ISAÍAS'?' selected':''}>ISAÍAS</option>
+            <option${d.MOTORISTA==='RENÊ'?' selected':''}>RENÊ</option>
+            <option${d.MOTORISTA==='ADRIANO'?' selected':''}>ADRIANO</option>
+            <option${d.MOTORISTA==='JOEL'?' selected':''}>JOEL</option>
+            <option${d.MOTORISTA==='WALMIR'?' selected':''}>WALMIR</option>
+            <option${d.MOTORISTA==='ANDRÉ'?' selected':''}>ANDRÉ</option>
+            <option${d.MOTORISTA==='VAGNER'?' selected':''}>VAGNER</option>
+            <option${d.MOTORISTA==='CÉLIO'?' selected':''}>CÉLIO</option>
+            <option${d.MOTORISTA==='OLIVEIRA'?' selected':''}>OLIVEIRA</option>
+            <option${d.MOTORISTA==='MARCIO'?' selected':''}>MARCIO</option>
+            <option${d.MOTORISTA==='ROBSON'?' selected':''}>ROBSON</option>
+            <option${d.MOTORISTA==='THIAGO'?' selected':''}>THIAGO</option>
+            <option${d.MOTORISTA==='CARLOS'?' selected':''}>CARLOS</option>
+            <option${d.MOTORISTA==='MARCELO'?' selected':''}>MARCELO</option>
+            <option${d.MOTORISTA==='VITOR'?' selected':''}>VITOR</option>
+            <option${d.MOTORISTA==='EDSON'?' selected':''}>EDSON</option>
+            <option${d.MOTORISTA==='LEONARDO'?' selected':''}>LEONARDO</option>
+            <option${d.MOTORISTA==='EDILEI'?' selected':''}>EDILEI</option>
           </select></div>
+
+          <!-- AVISO DE DISPONIBILIDADE -->
+          <div id="aviso-disp" style="display:none;padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:14px;border:1px solid transparent"></div>
+
           ${fg('DESTINO','Destino / Rota','text', d.DESTINO)}
           ${fg('PONTO_ON','Ponto ON Motorista','time', d.PONTO_ON)}
           ${fg('SAIDA_VEICULO_CD','Saída Veículo CD','time', d.SAIDA_VEICULO_CD)}
@@ -380,11 +458,13 @@
           <div id="msg-ok" style="display:none" class="msg-ok">✅ Salvo com sucesso!</div>
         </div>`;
 
-      // listeners para recalcular
       ['PONTO_ON','PONTO_OFF_MOTO','KM_SAIDA','KM_CHEGADA','ABERTURA_1','SAIDA_1','ABERTURA_2','SAIDA_2'].forEach(id=>{
         const el = $('f-'+id); if(el) el.addEventListener('input', recalc);
       });
       recalc();
+
+      // Se já tem motorista selecionado (edição), mostra disponibilidade
+      if (d.MOTORISTA) atualizarDisponibilidade();
     }
 
     function fg(id, label, type, val) {
@@ -415,6 +495,18 @@
     window.salvar = async () => {
       const g = id => { const e=$('f-'+id); return e?e.value.trim():''; };
       const c = id => { const e=$(id); return e?e.textContent:''; };
+
+      // ── VALIDAÇÃO DE DISPONIBILIDADE ───────────────────────────────
+      const aviso = $('aviso-disp');
+      const proxHora = aviso && aviso.dataset.proxHora;
+      const pontoOn  = g('PONTO_ON');
+      if (proxHora && pontoOn) {
+        if (toMin(pontoOn) < toMin(proxHora)) {
+          alert(`⚠️ Motorista indisponível até ${proxHora}.\nO Ponto ON informado (${pontoOn}) é anterior à próxima disponibilidade.`);
+          return;
+        }
+      }
+
       const tl1 = calcTL(g('ABERTURA_1'),g('SAIDA_1'));
       const tl2 = calcTL(g('ABERTURA_2'),g('SAIDA_2'));
 
@@ -431,8 +523,8 @@
         ABERTURA_2: g('ABERTURA_2'), FECHADO_2: g('FECHADO_2'), SAIDA_2: g('SAIDA_2'),
         TOTAL_LOJA_2: tl2, TOTAL_LOJA: calcTotalLoja(tl1,tl2),
         DIESEL_CHEGADA: g('DIESEL_CHEGADA'), CHEGADA_VEICULO_CD: g('CHEGADA_VEICULO_CD'),
-        PONTO_OFF_MOT: g('PONTO_OFF_MOTO'),        // col 30 — preenchido pelo auxiliar
-        PONTO_OFF_MOTO: g('PONTO_OFF_MOTO'),       // col 7  — fórmula (=col 30)
+        PONTO_OFF_MOT: g('PONTO_OFF_MOTO'),
+        PONTO_OFF_MOTO: g('PONTO_OFF_MOTO'),
         HORA_TOTAL_MOTORISTA: c('c-HTOT'),
         DATA_CHEGADA: g('DATA_CHEGADA'), KM_CHEGADA: g('KM_CHEGADA'),
         KM_PERCORRIDO: calcKmPerc(g('KM_SAIDA'),g('KM_CHEGADA')),
@@ -447,16 +539,10 @@
         if (!docId) docId = `${hojeDocId()}_${currentPerfil.op}_${payload.VEICULO.replace(/\s/g,'_')||Date.now()}`;
         const { setDoc: sd, doc: dc } = await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js");
         await setDoc(doc(db,'lancamentos',docId), payload, {merge:true});
-
-        // Envia para Google Sheets em tempo real (contorna CORS)
         try {
           const params = encodeURIComponent(JSON.stringify(payload));
-          await fetch(WEBHOOK_URL + '?dados=' + params, {
-            method: 'GET',
-            mode: 'no-cors'
-          });
+          await fetch(WEBHOOK_URL + '?dados=' + params, { method: 'GET', mode: 'no-cors' });
         } catch(we) { console.warn('Webhook:', we); }
-
         $('msg-ok').style.display='block';
         setTimeout(()=>{ $('msg-ok').style.display='none'; },2500);
       } catch(e) { alert('Erro: '+e.message); }
@@ -472,16 +558,12 @@
       --danger:#e85555;
     }
     html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;font-size:15px;overscroll-behavior:none}
-
-    /* ── telas de espera ── */
     .tela-central{display:none;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px;text-align:center}
     .tela-central .icone{font-size:56px;margin-bottom:20px}
     .tela-central h2{font-family:'Barlow Condensed',sans-serif;font-size:26px;margin-bottom:10px}
     .tela-central p{color:var(--muted);font-size:14px;max-width:280px;line-height:1.6}
     .btn-sair{margin-top:24px;padding:10px 28px;background:none;border:1px solid var(--bord);color:var(--muted);border-radius:8px;cursor:pointer;font-size:14px}
     .btn-sair:hover{border-color:var(--danger);color:var(--danger)}
-
-    /* ── login / cadastro ── */
     .auth-wrap{display:none;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}
     .auth-box{width:100%;max-width:380px;background:var(--surf);border:1px solid var(--bord);border-radius:16px;padding:36px 28px}
     .logo{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:40px;color:var(--acc);text-align:center;line-height:1}
@@ -497,8 +579,6 @@
     .link-btn{width:100%;margin-top:14px;padding:10px;background:none;border:1px solid var(--bord);color:var(--muted);border-radius:8px;cursor:pointer;font-size:14px}
     .link-btn:hover{border-color:var(--acc);color:var(--acc)}
     .erro{display:none;background:#e8555520;border:1px solid var(--danger);border-radius:8px;padding:10px 14px;color:var(--danger);font-size:13px;margin-top:12px;text-align:center}
-
-    /* ── app ── */
     #app-tela{display:none}
     .topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:var(--surf);border-bottom:1px solid var(--bord);position:sticky;top:0;z-index:100}
     .topbar-left{display:flex;flex-direction:column;gap:2px}
@@ -507,7 +587,6 @@
     .op-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;background:var(--acc);color:#0f1923}
     .btn-logout{background:none;border:1px solid var(--bord);color:var(--muted);padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px}
     .btn-logout:hover{border-color:var(--danger);color:var(--danger)}
-
     #lista-section{padding:20px}
     .dia-label{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
     .btn-novo{display:flex;align-items:center;justify-content:center;width:100%;padding:13px;background:transparent;border:2px dashed var(--bord);border-radius:10px;color:var(--acc);font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:600;cursor:pointer;margin-bottom:16px;transition:all .2s}
@@ -528,8 +607,6 @@
     .empty{text-align:center;padding:40px 20px}
     .empty-icon{font-size:48px;margin:20px 0 10px}
     .empty p{color:var(--muted)}
-
-    /* ── formulário ── */
     #form-tela{display:none;padding-bottom:40px}
     .form-header{display:flex;align-items:center;gap:14px;padding:14px 20px;background:var(--surf);border-bottom:1px solid var(--bord);position:sticky;top:57px;z-index:99}
     .btn-voltar{background:none;border:1px solid var(--bord);color:var(--muted);padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;white-space:nowrap}
@@ -548,7 +625,6 @@
 </head>
 <body>
 
-<!-- LOGIN -->
 <div id="login-tela" class="auth-wrap" style="display:flex">
   <div class="auth-box">
     <div class="logo">FROTA<br>FIELD</div>
@@ -561,7 +637,6 @@
   </div>
 </div>
 
-<!-- CADASTRO -->
 <div id="cadastro-tela" class="auth-wrap">
   <div class="auth-box">
     <div class="logo" style="font-size:32px">SOLICITAR<br>ACESSO</div>
@@ -591,7 +666,6 @@
   </div>
 </div>
 
-<!-- AGUARDANDO APROVAÇÃO -->
 <div id="aguardando-tela" class="tela-central">
   <div class="icone">⏳</div>
   <h2>Aguardando aprovação</h2>
@@ -599,7 +673,6 @@
   <button class="btn-sair" onclick="fazerLogout()">Sair</button>
 </div>
 
-<!-- BLOQUEADO -->
 <div id="bloqueado-tela" class="tela-central">
   <div class="icone">🚫</div>
   <h2>Acesso bloqueado</h2>
@@ -607,7 +680,6 @@
   <button class="btn-sair" onclick="fazerLogout()">Sair</button>
 </div>
 
-<!-- APP PRINCIPAL -->
 <div id="app-tela">
   <div class="topbar">
     <div class="topbar-left">
@@ -619,12 +691,10 @@
     </div>
     <button class="btn-logout" onclick="fazerLogout()">Sair</button>
   </div>
-
   <div id="lista-section">
     <div class="dia-label">Lançamentos do dia</div>
     <div id="lista-veiculos"><div style="text-align:center;padding:40px;color:var(--muted)">Carregando...</div></div>
   </div>
-
   <div id="form-tela"></div>
 </div>
 
