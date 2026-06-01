@@ -203,6 +203,11 @@
     }
 
     // ── DETALHE LANÇAMENTO ────────────────────────────────────────────
+    const WEBHOOK_URL_SUP = 'https://script.google.com/macros/s/AKfycbxZxi8vPx1gAoys7W1Poy88BwNf7Zq9tIhmFO6h511kHQhplGPcdkmGdwQ7afqzzcTsCA/exec';
+    const MOTORISTAS_SUP = ['ALEXANDRE','DANIEL','DEVANILSO','HERIBERTO','SÉRGIO','ANTÔNIO','CAMARA','NEVES','VALDIR','ROGERIO','EDILSON','SÉRGIO SILVA','GILMAR','SANDRO','LUIZ','MEDEIROS','NOGUEIRA','RICARDO','EDUARDO','CLAUDINEI','DUARTE','ROBERTO','ROSENDO','ANDERSON','ISAÍAS','RENÊ','ADRIANO','JOEL','WALMIR','ANDRÉ','VAGNER','CÉLIO','OLIVEIRA','MARCIO','ROBSON','THIAGO','CARLOS','MARCELO','VITOR','EDSON','LEONARDO','EDILEI'];
+    const VEICULOS_SUP = ['063 LBW 8156','064 LUV 9296','065 KZQ 9648','066 LUB 1400','067 LUX 9063','068 LSN 1702','074 LKK 6551','075 KUT 8573','088 KYP 3601','091 KPE 2252','092 LSF 4199','093 KVF 3715','094 KQT 1919','095 LTJ 4440','096 KQS 2672','097 LRX 4831','098 LRX 4828','099 LRX 4830','100 LRX 4829','101 LRX 4832','102 LRT 4821','103 KWB 9779','104 LRC 3089','105 KPU 7450','106 LSZ 5959','107 LRR 8757','108 LSM 7748','109 LSM 7749','110 LSM 7750','111 KRO 8527','112 KRO 8528','113 KXU 6988','114 KXU 6989','115 KXW 7716','116 LSQ 6092','117 KRR 2728','118 LSQ 6093','119 LRP 8A18','120 LTF 9726','121 KRZ 8143','122 DPF 7I23','123 ATJ3F42','124 ATI4G85','125 OWO2F73'];
+    let dadosDetalheSup = null;
+
     window.apagarLancamentoSup = async (fid) => {
       if (!confirm('Apagar este lançamento?')) return;
       await deleteDoc(doc(db,'lancamentos', fid));
@@ -212,36 +217,95 @@
     window.abrirDetalhe = fid => {
       const v = todosLanc.find(x=>x.fid===fid);
       if(!v) return;
+      dadosDetalheSup = v;
       const st  = calcStatus(v);
       const cor = OP_CORES[v.OP]||'#6b8099';
-      const campos = [
-        ['Operação',v.OP],['Veículo',v.VEICULO],['Motorista',v.MOTORISTA],
-        ['Destino',v.DESTINO],['SM',v.SM],['Data Carregamento',v.DATA_CARRG],
-        ['Ponto ON',v.PONTO_ON],['Previsão Refeição',v.PREVISAO_REFEICAO],
-        ['Almoço',v.ALMOCO],['Saída Veículo CD',v.SAIDA_VEICULO_CD],
-        ['KM Saída',v.KM_SAIDA],
-        ['── Lojas ──',null],
-        ['1ª Loja',v.LOJA_1],['Abertura 1',v.ABERTURA_1],['Fechado 1',v.FECHADO_1],['Saída 1',v.SAIDA_1],
-        ['2ª Loja',v.LOJA_2],['Abertura 2',v.ABERTURA_2],['Fechado 2',v.FECHADO_2],['Saída 2',v.SAIDA_2],
-        ['Total Loja',v.TOTAL_LOJA],
-        ['── Retorno ──',null],
-        ['Diesel Chegada',v.DIESEL_CHEGADA],['Chegada Veículo CD',v.CHEGADA_VEICULO_CD],
-        ['Ponto OFF',v.PONTO_OFF_MOT],['Hora Total',v.HORA_TOTAL_MOTORISTA],
-        ['Data Chegada',v.DATA_CHEGADA],['KM Chegada',v.KM_CHEGADA],
-        ['KM Percorrido',v.KM_PERCORRIDO?v.KM_PERCORRIDO+' km':null],
-        ['Observações',v.OBSERVACOES],['Lançado por',v._por],
-      ];
+
       $('det-titulo').innerHTML = `<span class="op-pill" style="background:${cor}20;color:${cor}">${v.OP}</span> ${v.VEICULO||'—'}`;
       $('det-sub').textContent  = `${v.MOTORISTA||'—'} · ${v.DATA||''}`;
-      $('det-st').innerHTML     = `<span class="st-dot" style="background:${st.cor}"></span>${st.label}`;
-      $('det-campos').innerHTML = campos.map(([l,val])=>{
-        if(val===null) return `<div class="det-sep">${l}</div>`;
-        if(!val) return '';
-        return `<div class="det-row"><span class="det-l">${l}</span><span class="det-v">${val}</span></div>`;
-      }).join('');
-      $('det-campos').innerHTML += `<button onclick="apagarLancamentoSup('${id}')" style="width:100%;margin-top:20px;padding:12px;background:none;border:1px solid #e8555560;color:#e85555;border-radius:8px;cursor:pointer;font-size:14px">🗑 Apagar lançamento</button>`;
+      $('det-st').innerHTML     = `<span class="st-dot" style="background:${st.cor}"></span>${st.label||''}`;
+
+      const fgs = (id, label, type, val) => {
+        const v2 = val||'';
+        if(type==='sel-mot') return `<div class="det-fg"><label>${label}</label><select id="sf-${id}" class="det-input"><option value="">—</option>${MOTORISTAS_SUP.map(m=>`<option${m===v2?' selected':''}>${m}</option>`).join('')}</select></div>`;
+        if(type==='sel-veic') return `<div class="det-fg"><label>${label}</label><select id="sf-${id}" class="det-input"><option value="">—</option>${VEICULOS_SUP.map(m=>`<option${m===v2?' selected':''}>${m}</option>`).join('')}</select></div>`;
+        if(type==='textarea') return `<div class="det-fg"><label>${label}</label><textarea id="sf-${id}" class="det-input" rows="2">${v2}</textarea></div>`;
+        return `<div class="det-fg"><label>${label}</label><input id="sf-${id}" type="${type}" value="${v2}" class="det-input"></div>`;
+      };
+
+      $('det-campos').innerHTML = `
+        <div class="det-sec">📋 Dados da Base</div>
+        ${fgs('VEICULO','Veículo','sel-veic', v.VEICULO)}
+        ${fgs('MOTORISTA','Motorista','sel-mot', v.MOTORISTA)}
+        ${fgs('DESTINO','Destino / Rota','text', v.DESTINO)}
+        ${fgs('PONTO_ON','Ponto ON Motorista','time', v.PONTO_ON)}
+        ${fgs('SAIDA_VEICULO_CD','Saída Veículo CD','time', v.SAIDA_VEICULO_CD)}
+        ${fgs('SM','SM','text', v.SM)}
+        ${fgs('DATA_CARRG','Data Carregamento','date', v.DATA_CARRG)}
+        ${fgs('ALMOCO','Almoço (duração)','time', v.ALMOCO)}
+        ${fgs('KM_SAIDA','KM Saída','number', v.KM_SAIDA)}
+        ${fgs('LOJA_1','Prev. Chegada 1ª Loja','time', v.LOJA_1)}
+        ${fgs('ABERTURA_1','Abertura 1ª Loja','time', v.ABERTURA_1)}
+        <div class="det-sec">🚛 Preenchimento em Campo</div>
+        ${fgs('FECHADO_1','Fechado 1ª Loja','time', v.FECHADO_1)}
+        ${fgs('SAIDA_1','Saída 1ª Loja','time', v.SAIDA_1)}
+        ${fgs('LOJA_2','Prev. Chegada 2ª Loja','time', v.LOJA_2)}
+        ${fgs('ABERTURA_2','Abertura 2ª Loja','time', v.ABERTURA_2)}
+        ${fgs('FECHADO_2','Fechado 2ª Loja','time', v.FECHADO_2)}
+        ${fgs('SAIDA_2','Saída 2ª Loja','time', v.SAIDA_2)}
+        ${fgs('DIESEL_CHEGADA','Diesel Chegada','time', v.DIESEL_CHEGADA)}
+        ${fgs('CHEGADA_VEICULO_CD','Chegada Veículo CD','time', v.CHEGADA_VEICULO_CD)}
+        ${fgs('PONTO_OFF_MOT','Ponto OFF Motorista (CD)','time', v.PONTO_OFF_MOT||v.PONTO_OFF_MOTO)}
+        ${fgs('DATA_CHEGADA','Data Chegada','date', v.DATA_CHEGADA)}
+        ${fgs('KM_CHEGADA','KM Chegada','number', v.KM_CHEGADA)}
+        ${fgs('OBSERVACOES','Observações','textarea', v.OBSERVACOES)}
+        <button onclick="salvarSup()" style="width:100%;margin-top:16px;padding:14px;background:#f0a500;color:#080f18;border:none;border-radius:8px;font-size:16px;font-weight:700;cursor:pointer">💾 Salvar</button>
+        <div id="msg-ok-sup" style="display:none;margin-top:10px;padding:10px;background:#00c9a720;border:1px solid #00c9a7;border-radius:8px;color:#00c9a7;text-align:center">✅ Salvo!</div>
+        <button onclick="apagarLancamentoSup('${fid}')" style="width:100%;margin-top:10px;padding:10px;background:none;border:1px solid #e8555560;color:#e85555;border-radius:8px;cursor:pointer;font-size:13px">🗑 Apagar lançamento</button>
+      `;
       $('overlay').style.display='flex';
     };
+
+    window.salvarSup = async () => {
+      const g = id => { const e=document.getElementById('sf-'+id); return e?e.value.trim():''; };
+      const v = dadosDetalheSup;
+      const toMin = t => { if(!t) return 0; const [h,m]=t.split(':').map(Number); return h*60+m; };
+      const toHM  = m => `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`;
+      const calcTL = (ab,sa) => ab&&sa ? toHM(Math.max(0,toMin(sa)-toMin(ab))) : '';
+      const tl1 = calcTL(g('ABERTURA_1'),g('SAIDA_1'));
+      const tl2 = calcTL(g('ABERTURA_2'),g('SAIDA_2'));
+      const kmP = g('KM_SAIDA')&&g('KM_CHEGADA') ? String(Math.max(0,Number(g('KM_CHEGADA'))-Number(g('KM_SAIDA')))) : '';
+      const htot = g('PONTO_ON')&&g('PONTO_OFF_MOT') ? toHM(Math.max(0,toMin(g('PONTO_OFF_MOT'))-toMin(g('PONTO_ON')))) : '';
+      const prev = g('PONTO_ON') ? toHM((toMin(g('PONTO_ON'))+300)%1440) : '';
+      const tTotal = () => { const a=toMin(tl1),b=toMin(tl2); return (a||b)?toHM(a+b):''; };
+
+      const payload = {
+        DATA: v.DATA, OP: v.OP,
+        VEICULO: g('VEICULO')||v.VEICULO, MOTORISTA: g('MOTORISTA'),
+        DESTINO: g('DESTINO'), PONTO_ON: g('PONTO_ON'), PREVISAO_REFEICAO: prev,
+        SAIDA_VEICULO_CD: g('SAIDA_VEICULO_CD'), SM: g('SM'),
+        DATA_CARRG: g('DATA_CARRG'), ALMOCO: g('ALMOCO'),
+        KM_SAIDA: g('KM_SAIDA'), LOJA_1: g('LOJA_1'),
+        ABERTURA_1: g('ABERTURA_1'), FECHADO_1: g('FECHADO_1'), SAIDA_1: g('SAIDA_1'),
+        TOTAL_LOJA_1: tl1, LOJA_2: g('LOJA_2'),
+        ABERTURA_2: g('ABERTURA_2'), FECHADO_2: g('FECHADO_2'), SAIDA_2: g('SAIDA_2'),
+        TOTAL_LOJA_2: tl2, TOTAL_LOJA: tTotal(),
+        DIESEL_CHEGADA: g('DIESEL_CHEGADA'), CHEGADA_VEICULO_CD: g('CHEGADA_VEICULO_CD'),
+        PONTO_OFF_MOT: g('PONTO_OFF_MOT'), PONTO_OFF_MOTO: g('PONTO_OFF_MOT'),
+        HORA_TOTAL_MOTORISTA: htot, DATA_CHEGADA: g('DATA_CHEGADA'),
+        KM_CHEGADA: g('KM_CHEGADA'), KM_PERCORRIDO: kmP,
+        OBSERVACOES: g('OBSERVACOES'), _por: currentUser.email, _em: serverTimestamp()
+      };
+
+      try {
+        await setDoc(doc(db,'lancamentos', v.fid), payload, {merge:true});
+        const params = encodeURIComponent(JSON.stringify(payload));
+        await fetch(WEBHOOK_URL_SUP + '?dados=' + params, {method:'GET', mode:'no-cors'});
+        const msg = document.getElementById('msg-ok-sup');
+        if(msg){ msg.style.display='block'; setTimeout(()=>{ msg.style.display='none'; },2500); }
+      } catch(e) { alert('Erro: '+e.message); }
+    };
+
     window.fecharDetalhe = () => { $('overlay').style.display='none'; };
 
     // ── PAINEL DE USUÁRIOS ────────────────────────────────────────────
@@ -410,7 +474,11 @@
     .det-sub{font-size:13px;color:var(--muted);margin-top:2px}
     .det-st{display:flex;align-items:center;font-size:13px;margin-top:6px}
     .btn-fechar{background:none;border:1px solid var(--bord);color:var(--muted);padding:8px 16px;border-radius:8px;cursor:pointer}
-    .det-sep{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding:14px 0 6px;border-bottom:1px solid var(--bord);margin-bottom:6px}
+    .det-sec{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding:14px 0 6px;border-bottom:1px solid var(--bord);margin-bottom:8px}
+    .det-fg{margin-bottom:10px}
+    .det-fg label{display:block;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+    .det-input{width:100%;background:var(--bg);border:1px solid var(--bord);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px;font-family:'Barlow',sans-serif;outline:none}
+    .det-input:focus{border-color:var(--acc)}
     .det-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #0d1e2e}
     .det-l{font-size:12px;color:var(--muted)}.det-v{font-size:13px;font-weight:500;text-align:right;max-width:65%}
 
