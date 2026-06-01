@@ -68,13 +68,28 @@
     const calcTotalLoja  = (t1,t2) => { const a=toMin(t1),b=toMin(t2); return (a||b)?toHM(a+b):''; };
 
     // ── AUTH STATE ───────────────────────────────────────────────────
+    let cadastrandoAgora = false;
+
     onAuthStateChanged(auth, async user => {
       if (!user) { mostrarTela('login'); return; }
+      if (cadastrandoAgora) return; // aguarda cadastro terminar
       currentUser = user;
       const snap = await getDoc(doc(db,'usuarios', user.uid));
-      if (!snap.exists()) { await signOut(auth); mostrarTela('login'); return; }
+      if (!snap.exists()) {
+        // Documento ainda não existe — pode ser cadastro em andamento
+        // Aguarda 2s e tenta novamente
+        setTimeout(async () => {
+          const snap2 = await getDoc(doc(db,'usuarios', user.uid));
+          if (!snap2.exists()) { await signOut(auth); mostrarTela('login'); return; }
+          currentPerfil = snap2.data();
+          if (currentPerfil.status === 'pendente') { mostrarTela('aguardando'); return; }
+          if (currentPerfil.status === 'bloqueado'){ mostrarTela('bloqueado');  return; }
+          if (currentPerfil.status === 'ativo')    { mostrarTela('app');        iniciarApp(); return; }
+          await signOut(auth); mostrarTela('login');
+        }, 2000);
+        return;
+      }
       currentPerfil = snap.data();
-
       if (currentPerfil.status === 'pendente') { mostrarTela('aguardando'); return; }
       if (currentPerfil.status === 'bloqueado'){ mostrarTela('bloqueado');  return; }
       if (currentPerfil.status === 'ativo')    { mostrarTela('app');        iniciarApp(); return; }
