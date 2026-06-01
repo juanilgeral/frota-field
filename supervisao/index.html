@@ -2,22 +2,21 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#0f1923">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#080f18">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Frota Field">
   <link rel="manifest" href="manifest.json">
-  <title>Frota Field</title>
+  <title>Frota — Supervisão</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@300;400;500&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 
   <script type="module">
-    import { initializeApp }                        from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
-    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile }
-                                                    from "https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js";
-    import { getFirestore, doc, setDoc, getDoc, collection, query, where, onSnapshot, serverTimestamp }
-                                                    from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
+    import { initializeApp }   from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
+                               from "https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js";
+    import { getFirestore, collection, doc, getDoc, setDoc, updateDoc, deleteDoc,
+             query, where, onSnapshot, orderBy, serverTimestamp }
+                               from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
 
     // ═══════════════════════════════════════════════════════════════
     //  SUBSTITUA PELOS DADOS DO SEU PROJETO FIREBASE
@@ -31,564 +30,481 @@
       appId:             "1:642844753455:web:9be3f31a8bb735dfbd50da"
     };
 
+    // ── emails que têm acesso ao app de supervisão ──────────────────
+    // Adicione os emails dos supervisores aqui
+    const SUPERVISORES = [
+      "irineumoura57@gmail.com",
+      "juanilgeral@gmail.com",
+    ];
+
+    const OP_CORES = {LS:'#4da6ff',TL:'#ff8c42',HT:'#a78bfa',CV:'#34d399'};
+
     const app  = initializeApp(FIREBASE_CONFIG);
     const auth = getAuth(app);
     const db   = getFirestore(app);
 
-    let currentUser   = null;
-    let currentPerfil = null;
-    let veiculosHoje  = [];
+    let currentUser = null;
+    let todosLanc   = [];
+    let todosUsers  = [];
+    let filtroOp    = 'TODAS';
+    let abaPainel   = 'dashboard'; // 'dashboard' | 'usuarios'
 
-    // ── utilidades ──────────────────────────────────────────────────
     const $ = id => document.getElementById(id);
-    const show = id => $(id) && ($(id).style.display = 'flex');
-    const hide = id => $(id) && ($(id).style.display = 'none');
 
     function hojeISO() {
       const d = new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Sao_Paulo'}));
       return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getFullYear()).slice(-2)}`;
     }
-    function hojeLabel() {
-      const d = new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Sao_Paulo'}));
-      const dias = ['dom','seg','ter','qua','qui','sex','sáb'];
-      return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')} (${dias[d.getDay()]})`;
-    }
-    function hojeDocId() {
-      const d = new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Sao_Paulo'}));
-      return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
-    }
 
-    // campos calculados
-    const toMin = t => { if(!t) return 0; const [h,m] = t.split(':').map(Number); return h*60+m; };
-    const toHM  = m => `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`;
-    const calcPrevisao   = on  => on  ? toHM((toMin(on)+300)%1440) : '';
-    const calcHoraTotal  = (on,off) => on&&off ? toHM(Math.max(0,toMin(off)-toMin(on))) : '';
-    const calcKmPerc     = (s,c)   => s&&c ? String(Math.max(0,Number(c)-Number(s))) : '';
-    const calcTL         = (ab,sa) => ab&&sa ? toHM(Math.max(0,toMin(sa)-toMin(ab))) : '';
-    const calcTotalLoja  = (t1,t2) => { const a=toMin(t1),b=toMin(t2); return (a||b)?toHM(a+b):''; };
-
-    // ── AUTH STATE ───────────────────────────────────────────────────
-    let cadastrandoAgora = false;
-
-    onAuthStateChanged(auth, async user => {
-      if (!user) { mostrarTela('login'); return; }
-      if (cadastrandoAgora) return; // aguarda cadastro terminar
-      currentUser = user;
-      const snap = await getDoc(doc(db,'usuarios', user.uid));
-      if (!snap.exists()) {
-        // Documento ainda não existe — pode ser cadastro em andamento
-        // Aguarda 2s e tenta novamente
-        setTimeout(async () => {
-          const snap2 = await getDoc(doc(db,'usuarios', user.uid));
-          if (!snap2.exists()) { await signOut(auth); mostrarTela('login'); return; }
-          currentPerfil = snap2.data();
-          if (currentPerfil.status === 'pendente') { mostrarTela('aguardando'); return; }
-          if (currentPerfil.status === 'bloqueado'){ mostrarTela('bloqueado');  return; }
-          if (currentPerfil.status === 'ativo')    { mostrarTela('app');        iniciarApp(); return; }
-          await signOut(auth); mostrarTela('login');
-        }, 2000);
-        return;
+    // ── AUTH ─────────────────────────────────────────────────────────
+    onAuthStateChanged(auth, user => {
+      if (user) {
+        if (!SUPERVISORES.includes(user.email)) {
+          signOut(auth);
+          erroLogin('Acesso não autorizado.');
+          return;
+        }
+        currentUser = user;
+        mostrarDashboard();
+      } else {
+        mostrarLogin();
       }
-      currentPerfil = snap.data();
-      if (currentPerfil.status === 'pendente') { mostrarTela('aguardando'); return; }
-      if (currentPerfil.status === 'bloqueado'){ mostrarTela('bloqueado');  return; }
-      if (currentPerfil.status === 'ativo')    { mostrarTela('app');        iniciarApp(); return; }
-      await signOut(auth); mostrarTela('login');
     });
 
-    // ── TELAS ────────────────────────────────────────────────────────
-    // ── TELAS ────────────────────────────────────────────────────────
-    function mostrarTela(nome) {
-      ['login','cadastro','aguardando','bloqueado'].forEach(t => {
-        const el = $(t+'-tela');
-        if (el) el.style.display = 'none';
-      });
-      const appEl  = $('app-tela');
-      const formEl = $('form-tela');
-      if (appEl) appEl.style.display = 'none';
-      if (nome === 'login')      { $('login-tela').style.display='flex'; }
-      else if (nome==='cadastro')    { $('cadastro-tela').style.display='flex'; }
-      else if (nome==='aguardando')  { $('aguardando-tela').style.display='flex'; }
-      else if (nome==='bloqueado')   { $('bloqueado-tela').style.display='flex'; }
-      else if (nome==='app')  {
-        appEl.style.display='block';
-        if(formEl) formEl.style.display='none';
-        if($('lista-section')) $('lista-section').style.display='block';
-      }
-      else if (nome==='form') {
-        appEl.style.display='block';
-        if(formEl) formEl.style.display='block';
-        if($('lista-section')) $('lista-section').style.display='none';
-      }
-    }
-
-    // ── LOGIN ────────────────────────────────────────────────────────
     window.fazerLogin = async () => {
       const email = $('l-email').value.trim();
       const senha = $('l-senha').value;
       const btn   = $('btn-login');
-      if (!email||!senha) return;
       btn.disabled=true; btn.textContent='Entrando...';
       try {
         await signInWithEmailAndPassword(auth, email, senha);
-      } catch(e) {
-        erroLogin(e.code==='auth/invalid-credential'?'Email ou senha incorretos.':'Erro ao entrar. Tente novamente.');
+      } catch {
+        erroLogin('Email ou senha inválidos.');
         btn.disabled=false; btn.textContent='ENTRAR';
       }
     };
     function erroLogin(msg) { $('erro-login').textContent=msg; $('erro-login').style.display='block'; }
-    window.irCadastro  = () => mostrarTela('cadastro');
-    window.irLogin     = () => mostrarTela('login');
     window.fazerLogout = () => signOut(auth);
 
-    // ── CADASTRO ─────────────────────────────────────────────────────
-    window.fazerCadastro = async () => {
-      const nome  = $('c-nome').value.trim();
-      const email = $('c-email').value.trim();
-      const senha = $('c-senha').value;
-      const op    = $('c-op').value;
-      const cargo = $('c-cargo').value;
-      const btn   = $('btn-cadastro');
-
-      if (!nome||!email||!senha||!op||!cargo) {
-        erroCadastro('Preencha todos os campos.'); return;
-      }
-      if (senha.length < 6) { erroCadastro('Senha mínima: 6 caracteres.'); return; }
-
-      btn.disabled=true; btn.textContent='Cadastrando...';
-      try {
-        // Tenta criar usuário no Auth
-        let uid;
-        try {
-          const cred = await createUserWithEmailAndPassword(auth, email, senha);
-          await updateProfile(cred.user, { displayName: nome });
-          uid = cred.user.uid;
-        } catch(authErr) {
-          // Se já existe no Auth, faz login para pegar o UID
-          if (authErr.code === 'auth/email-already-in-use') {
-            const cred2 = await signInWithEmailAndPassword(auth, email, senha);
-            uid = cred2.user.uid;
-          } else {
-            throw authErr;
-          }
-        }
-        // Salva no Firestore
-        await setDoc(doc(db,'usuarios', uid), {
-          uid, nome, email, op, cargo,
-          status: 'pendente',
-          criadoEm: serverTimestamp()
-        });
-        // onAuthStateChanged vai pegar e mostrar tela aguardando
-      } catch(e) {
-        console.error('Erro cadastro:', e);
-        erroCadastro(e.code ? e.code : ('Erro: ' + e.message));
-        btn.disabled=false; btn.textContent='SOLICITAR ACESSO';
-      }
-    };
-    function erroCadastro(msg) { $('erro-cadastro').textContent=msg; $('erro-cadastro').style.display='block'; }
-
-    // ── APP PRINCIPAL ─────────────────────────────────────────────────
-    function iniciarApp() {
-      $('nome-usuario').textContent = currentPerfil.nome;
-      $('tag-op').textContent       = currentPerfil.op;
-      $('data-hoje').textContent    = hojeLabel();
-      carregarVeiculos();
+    function mostrarLogin() {
+      $('login-tela').style.display     = 'flex';
+      $('dashboard-tela').style.display = 'none';
+    }
+    function mostrarDashboard() {
+      $('login-tela').style.display     = 'none';
+      $('dashboard-tela').style.display = 'block';
+      $('sup-nome').textContent         = currentUser.email;
+      iniciarRelogio();
+      escutarLancamentos();
+      escutarUsuarios();
     }
 
-    function carregarVeiculos() {
-      const q = query(
-        collection(db,'lancamentos'),
-        where('DATA','==', hojeISO()),
-        where('OP','==', currentPerfil.op)
+    function iniciarRelogio() {
+      const el = $('relogio');
+      const tick = () => {
+        const d = new Date();
+        if(el) el.textContent = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      };
+      tick(); setInterval(tick,1000);
+    }
+
+    // ── ESCUTAS FIRESTORE ─────────────────────────────────────────────
+    function escutarLancamentos() {
+      onSnapshot(
+        query(collection(db,'lancamentos'), where('DATA','==',hojeISO())),
+        snap => {
+          todosLanc = [];
+          snap.forEach(d => todosLanc.push({fid:d.id,...d.data()}));
+          renderCards(); renderTabela();
+        }
       );
-      onSnapshot(q, snap => {
-        veiculosHoje = [];
-        snap.forEach(d => veiculosHoje.push({fid: d.id, ...d.data()}));
-        renderLista();
+    }
+
+    function escutarUsuarios() {
+      onSnapshot(collection(db,'usuarios'), snap => {
+        todosUsers = [];
+        snap.forEach(d => todosUsers.push({uid:d.id,...d.data()}));
+        renderUsuarios();
+        atualizarBadgePendentes();
       });
     }
 
-    function calcStatus(v) {
-      if (v.CHEGADA_VEICULO_CD && v.KM_CHEGADA) return {cor:'verde',  txt:'Concluído'   };
-      if (v.SAIDA_1 || v.ABERTURA_1)            return {cor:'amarelo', txt:'Em rota'     };
-      if (v.SAIDA_VEICULO_CD)                   return {cor:'laranja', txt:'Em trânsito' };
-      if (v.PONTO_ON)                           return {cor:'azul',    txt:'Iniciado'    };
-      return                                           {cor:'cinza',   txt:'Pendente'    };
+    // ── ABAS ─────────────────────────────────────────────────────────
+    window.irAba = (aba) => {
+      abaPainel = aba;
+      ['dashboard','usuarios'].forEach(a => {
+        const btn = $('aba-'+a);
+        const sec = $('sec-'+a);
+        if(btn) btn.classList.toggle('ativa', a===aba);
+        if(sec) sec.style.display = a===aba ? 'block' : 'none';
+      });
+    };
+
+    function atualizarBadgePendentes() {
+      const n = todosUsers.filter(u => u.status==='pendente').length;
+      const badge = $('badge-pendentes');
+      if(badge) { badge.textContent = n||''; badge.style.display = n?'inline-block':'none'; }
     }
 
-    function renderLista() {
-      const lista = $('lista-veiculos');
-      const btnNovo = `<button class="btn-novo" onclick="abrirNovo()">+ Novo lançamento</button>`;
-      if (!veiculosHoje.length) {
-        lista.innerHTML = `<div class="empty">${btnNovo}<div class="empty-icon">🚛</div><p>Nenhum veículo lançado hoje.</p></div>`;
+    // ── DASHBOARD ─────────────────────────────────────────────────────
+    function calcStatus(v) {
+      if (v.CHEGADA_VEICULO_CD && v.KM_CHEGADA) return {key:'concluido', label:'Concluído',    cor:'#34d399'};
+      if (v.SAIDA_1 || v.ABERTURA_1)            return {key:'rota',      label:'Em rota',      cor:'#fbbf24'};
+      if (v.SAIDA_VEICULO_CD)                   return {key:'transito',  label:'Em trânsito',  cor:'#f97316'};
+      if (v.PONTO_ON)                           return {key:'iniciado',  label:'Iniciado',     cor:'#4da6ff'};
+      return                                           {key:'pendente',  label:'Pendente',     cor:'#6b8099'};
+    }
+
+    function renderCards() {
+      $('c-total').textContent     = todosLanc.length;
+      $('c-concluido').textContent = todosLanc.filter(v=>calcStatus(v).key==='concluido').length;
+      $('c-rota').textContent      = todosLanc.filter(v=>['rota','transito','iniciado'].includes(calcStatus(v).key)).length;
+      $('c-pendente').textContent  = todosLanc.filter(v=>calcStatus(v).key==='pendente').length;
+      ['LS','TL','HT','CV'].forEach(op => {
+        const el = $('op-'+op);
+        if(el) el.textContent = todosLanc.filter(v=>v.OP===op).length;
+      });
+    }
+
+    window.setFiltroOp = op => {
+      filtroOp = op;
+      document.querySelectorAll('.btn-op').forEach(b => b.classList.toggle('ativo', b.dataset.op===op));
+      renderTabela();
+    };
+
+    function renderTabela() {
+      let lista = [...todosLanc];
+      if (filtroOp !== 'TODAS') lista = lista.filter(v=>v.OP===filtroOp);
+      lista.sort((a,b) => {
+        const ord={pendente:0,iniciado:1,transito:2,rota:3,concluido:4};
+        return (ord[calcStatus(a).key]||0) - (ord[calcStatus(b).key]||0);
+      });
+      const tbody = $('tbody');
+      if (!lista.length) {
+        tbody.innerHTML = `<tr><td colspan="8" class="empty-row">Nenhum lançamento encontrado</td></tr>`;
+        $('cnt-label').textContent = '0 registros';
         return;
       }
-      lista.innerHTML = btnNovo + veiculosHoje.map(v => {
+      $('cnt-label').textContent = `${lista.length} registro${lista.length>1?'s':''}`;
+      tbody.innerHTML = lista.map(v => {
         const st = calcStatus(v);
-        return `<div class="card status-${st.cor}" onclick="abrirEdicao('${v.fid}')">
-          <div class="card-top">
-            <span class="card-placa">${v.VEICULO||'—'}</span>
-            <span class="badge badge-${st.cor}">${st.txt}</span>
-          </div>
-          <div class="card-mot">${v.MOTORISTA||'—'}</div>
-          <div class="card-info">
-            ${v.PONTO_ON?`<span>🕐 ${v.PONTO_ON}</span>`:''}
-            ${v.KM_SAIDA?`<span>📍 ${v.KM_SAIDA} km</span>`:''}
-            ${v.CHEGADA_VEICULO_CD?`<span>🏁 ${v.CHEGADA_VEICULO_CD}</span>`:''}
-          </div>
-        </div>`;
+        const cor = OP_CORES[v.OP]||'#6b8099';
+        return `<tr class="tr-data" onclick="abrirDetalhe('${v.fid}')">
+          <td><span class="op-pill" style="background:${cor}20;color:${cor}">${v.OP||'—'}</span></td>
+          <td class="col-placa">${v.VEICULO||'—'}</td>
+          <td>${v.MOTORISTA||'—'}</td>
+          <td class="mono">${v.PONTO_ON||'—'}</td>
+          <td class="mono">${v.SAIDA_VEICULO_CD||'—'}</td>
+          <td class="mono">${v.CHEGADA_VEICULO_CD||'—'}</td>
+          <td class="mono">${v.KM_PERCORRIDO?v.KM_PERCORRIDO+' km':'—'}</td>
+          <td><span class="st-dot" style="background:${st.cor}"></span>${st.label}</td>
+        </tr>`;
       }).join('');
     }
 
-    // ── FORMULÁRIO ────────────────────────────────────────────────────
-    let dadosForm = null;
-
-    window.abrirNovo = () => {
-      dadosForm = {DATA: hojeISO(), OP: currentPerfil.op, _novo: true};
-      renderForm();
-      mostrarTela('form');
+    // ── DETALHE LANÇAMENTO ────────────────────────────────────────────
+    window.abrirDetalhe = fid => {
+      const v = todosLanc.find(x=>x.fid===fid);
+      if(!v) return;
+      const st  = calcStatus(v);
+      const cor = OP_CORES[v.OP]||'#6b8099';
+      const campos = [
+        ['Operação',v.OP],['Veículo',v.VEICULO],['Motorista',v.MOTORISTA],
+        ['Destino',v.DESTINO],['SM',v.SM],['Data Carregamento',v.DATA_CARRG],
+        ['Ponto ON',v.PONTO_ON],['Previsão Refeição',v.PREVISAO_REFEICAO],
+        ['Almoço',v.ALMOCO],['Saída Veículo CD',v.SAIDA_VEICULO_CD],
+        ['KM Saída',v.KM_SAIDA],
+        ['── Lojas ──',null],
+        ['1ª Loja',v.LOJA_1],['Abertura 1',v.ABERTURA_1],['Fechado 1',v.FECHADO_1],['Saída 1',v.SAIDA_1],
+        ['2ª Loja',v.LOJA_2],['Abertura 2',v.ABERTURA_2],['Fechado 2',v.FECHADO_2],['Saída 2',v.SAIDA_2],
+        ['Total Loja',v.TOTAL_LOJA],
+        ['── Retorno ──',null],
+        ['Diesel Chegada',v.DIESEL_CHEGADA],['Chegada Veículo CD',v.CHEGADA_VEICULO_CD],
+        ['Ponto OFF',v.PONTO_OFF_MOT],['Hora Total',v.HORA_TOTAL_MOTORISTA],
+        ['Data Chegada',v.DATA_CHEGADA],['KM Chegada',v.KM_CHEGADA],
+        ['KM Percorrido',v.KM_PERCORRIDO?v.KM_PERCORRIDO+' km':null],
+        ['Observações',v.OBSERVACOES],['Lançado por',v._por],
+      ];
+      $('det-titulo').innerHTML = `<span class="op-pill" style="background:${cor}20;color:${cor}">${v.OP}</span> ${v.VEICULO||'—'}`;
+      $('det-sub').textContent  = `${v.MOTORISTA||'—'} · ${v.DATA||''}`;
+      $('det-st').innerHTML     = `<span class="st-dot" style="background:${st.cor}"></span>${st.label}`;
+      $('det-campos').innerHTML = campos.map(([l,val])=>{
+        if(val===null) return `<div class="det-sep">${l}</div>`;
+        if(!val) return '';
+        return `<div class="det-row"><span class="det-l">${l}</span><span class="det-v">${val}</span></div>`;
+      }).join('');
+      $('overlay').style.display='flex';
     };
-    window.abrirEdicao = fid => {
-      dadosForm = veiculosHoje.find(v => v.fid === fid);
-      if (!dadosForm) return;
-      renderForm();
-      mostrarTela('form');
-    };
-    window.voltarLista = () => mostrarTela('app');
+    window.fecharDetalhe = () => { $('overlay').style.display='none'; };
 
-    function renderForm() {
-      const d = dadosForm;
-      const fEl = $('form-tela');
-      fEl.innerHTML = `
-        <div class="form-header">
-          <button class="btn-voltar" onclick="voltarListaReal()">← Voltar</button>
-          <div>
-            <div class="form-veiculo">${d.VEICULO||'Novo Lançamento'}</div>
-            <div class="form-sub">${d.MOTORISTA||''} · ${d.DATA||hojeISO()}</div>
+    // ── PAINEL DE USUÁRIOS ────────────────────────────────────────────
+    function renderUsuarios() {
+      const pendentes  = todosUsers.filter(u=>u.status==='pendente');
+      const ativos     = todosUsers.filter(u=>u.status==='ativo');
+      const bloqueados = todosUsers.filter(u=>u.status==='bloqueado');
+
+      $('sec-usuarios').innerHTML = `
+        ${pendentes.length ? `
+          <div class="usr-grupo-title">⏳ Aguardando aprovação (${pendentes.length})</div>
+          ${pendentes.map(u => cardUsuario(u, true)).join('')}
+        ` : ''}
+
+        <div class="usr-grupo-title" style="margin-top:${pendentes.length?'24px':'0'}">✅ Ativos (${ativos.length})</div>
+        ${ativos.length ? ativos.map(u => cardUsuario(u, false)).join('') : '<div class="usr-empty">Nenhum usuário ativo.</div>'}
+
+        ${bloqueados.length ? `
+          <div class="usr-grupo-title" style="margin-top:24px">🚫 Bloqueados (${bloqueados.length})</div>
+          ${bloqueados.map(u => cardUsuario(u, false)).join('')}
+        ` : ''}
+      `;
+    }
+
+    function cardUsuario(u, isPendente) {
+      const opCor = OP_CORES[u.op]||'#6b8099';
+      const ativo = u.status==='ativo';
+      const bloq  = u.status==='bloqueado';
+      const pend  = u.status==='pendente';
+
+      const acoes = pend ? `
+        <button class="btn-usr btn-aprovar" onclick="aprovarUsuario('${u.uid}')">✅ Aprovar</button>
+        <button class="btn-usr btn-rejeitar" onclick="excluirUsuario('${u.uid}','${u.nome}')">❌ Rejeitar</button>
+      ` : ativo ? `
+        <button class="btn-usr btn-bloquear" onclick="bloquearUsuario('${u.uid}')">🚫 Bloquear</button>
+        <button class="btn-usr btn-excluir"  onclick="excluirUsuario('${u.uid}','${u.nome}')">🗑 Excluir</button>
+      ` : `
+        <button class="btn-usr btn-aprovar"  onclick="aprovarUsuario('${u.uid}')">✅ Reativar</button>
+        <button class="btn-usr btn-excluir"  onclick="excluirUsuario('${u.uid}','${u.nome}')">🗑 Excluir</button>
+      `;
+
+      return `<div class="usr-card">
+        <div class="usr-info">
+          <div class="usr-nome">${u.nome||'—'}</div>
+          <div class="usr-email">${u.email||'—'}</div>
+          <div class="usr-tags">
+            <span class="op-pill" style="background:${opCor}20;color:${opCor};font-size:12px">${u.op||'—'}</span>
+            <span class="cargo-tag">${u.cargo||'—'}</span>
+            <span class="status-tag st-${u.status}">${u.status}</span>
           </div>
         </div>
-        <div class="form-body">
-          ${d._novo?`<div class="fg"><label>Veículo</label>
-          <select id="f-VEICULO">
-            <option value="">Selecione o veículo</option>
-            <option value="063 LBW 8156">063 LBW 8156</option>
-            <option value="064 LUV 9296">064 LUV 9296</option>
-            <option value="065 KZQ 9648">065 KZQ 9648</option>
-            <option value="066 LUB 1400">066 LUB 1400</option>
-            <option value="067 LUX 9063">067 LUX 9063</option>
-            <option value="068 LSN 1702">068 LSN 1702</option>
-            <option value="074 LKK 6551">074 LKK 6551</option>
-            <option value="075 KUT 8573">075 KUT 8573</option>
-            <option value="088 KYP 3601">088 KYP 3601</option>
-            <option value="091 KPE 2252">091 KPE 2252</option>
-            <option value="092 LSF 4199">092 LSF 4199</option>
-            <option value="093 KVF 3715">093 KVF 3715</option>
-            <option value="094 KQT 1919">094 KQT 1919</option>
-            <option value="095 LTJ 4440">095 LTJ 4440</option>
-            <option value="096 KQS 2672">096 KQS 2672</option>
-            <option value="097 LRX 4831">097 LRX 4831</option>
-            <option value="098 LRX 4828">098 LRX 4828</option>
-            <option value="099 LRX 4830">099 LRX 4830</option>
-            <option value="100 LRX 4829">100 LRX 4829</option>
-            <option value="101 LRX 4832">101 LRX 4832</option>
-            <option value="102 LRT 4821">102 LRT 4821</option>
-            <option value="103 KWB 9779">103 KWB 9779</option>
-            <option value="104 LRC 3089">104 LRC 3089</option>
-            <option value="105 KPU 7450">105 KPU 7450</option>
-            <option value="106 LSZ 5959">106 LSZ 5959</option>
-            <option value="107 LRR 8757">107 LRR 8757</option>
-            <option value="108 LSM 7748">108 LSM 7748</option>
-            <option value="109 LSM 7749">109 LSM 7749</option>
-            <option value="110 LSM 7750">110 LSM 7750</option>
-            <option value="111 KRO 8527">111 KRO 8527</option>
-            <option value="112 KRO 8528">112 KRO 8528</option>
-            <option value="113 KXU 6988">113 KXU 6988</option>
-            <option value="114 KXU 6989">114 KXU 6989</option>
-            <option value="115 KXW 7716">115 KXW 7716</option>
-            <option value="116 LSQ 6092">116 LSQ 6092</option>
-            <option value="117 KRR 2728">117 KRR 2728</option>
-            <option value="118 LSQ 6093">118 LSQ 6093</option>
-            <option value="119 LRP 8A18">119 LRP 8A18</option>
-            <option value="120 LTF 9726">120 LTF 9726</option>
-            <option value="121 KRZ 8143">121 KRZ 8143</option>
-            <option value="122 DPF 7I23">122 DPF 7I23</option>
-            <option value="123 ATJ3F42">123 ATJ3F42</option>
-            <option value="124 ATI4G85">124 ATI4G85</option>
-            <option value="125 OWO2F73">125 OWO2F73</option>
-          </select></div>`:`<div class="fro"><span>Veículo</span><span>${d.VEICULO||'—'}</span></div>`}
-
-          <div class="sec-title">📋 Dados da Base</div>
-          ${fg('MOTORISTA','Motorista','text', d.MOTORISTA)}
-          ${fg('DESTINO','Destino / Rota','text', d.DESTINO)}
-          ${fg('PONTO_ON','Ponto ON Motorista','time', d.PONTO_ON)}
-          ${fg('SAIDA_VEICULO_CD','Saída Veículo CD','time', d.SAIDA_VEICULO_CD)}
-          ${fg('SM','SM','text', d.SM)}
-          ${fg('DATA_CARRG','Data Carregamento','date', d.DATA_CARRG)}
-          ${fg('ALMOCO','Almoço (duração)','time', d.ALMOCO)}
-          ${fg('KM_SAIDA','KM Saída','number', d.KM_SAIDA)}
-          ${fg('LOJA_1','Prev. Chegada 1ª Loja','time', d.LOJA_1)}
-          ${fg('ABERTURA_1','Abertura 1ª Loja','time', d.ABERTURA_1)}
-
-          <div class="sec-title formula-title">🔢 Calculados automaticamente</div>
-          <div class="formula-grid">
-            <div class="fro"><span>Prev. Refeição</span><span class="calc" id="c-PREV">${d.PREVISAO_REFEICAO||'—'}</span></div>
-            <div class="fro"><span>Hora Total</span><span class="calc" id="c-HTOT">${d.HORA_TOTAL_MOTORISTA||'—'}</span></div>
-            <div class="fro"><span>KM Percorrido</span><span class="calc" id="c-KMP">${d.KM_PERCORRIDO?d.KM_PERCORRIDO+' km':'—'}</span></div>
-            <div class="fro"><span>Total Loja</span><span class="calc" id="c-TLJ">${d.TOTAL_LOJA||'—'}</span></div>
-          </div>
-
-          <div class="sec-title">🚛 Preenchimento em Campo</div>
-          ${fg('FECHADO_1','Fechado 1ª Loja','time', d.FECHADO_1)}
-          ${fg('SAIDA_1','Saída 1ª Loja','time', d.SAIDA_1)}
-          ${fg('LOJA_2','Prev. Chegada 2ª Loja','time', d.LOJA_2)}
-          ${fg('ABERTURA_2','Abertura 2ª Loja','time', d.ABERTURA_2)}
-          ${fg('FECHADO_2','Fechado 2ª Loja','time', d.FECHADO_2)}
-          ${fg('SAIDA_2','Saída 2ª Loja','time', d.SAIDA_2)}
-          ${fg('DIESEL_CHEGADA','Diesel Chegada (horário)','time', d.DIESEL_CHEGADA)}
-          ${fg('CHEGADA_VEICULO_CD','Chegada Veículo CD','time', d.CHEGADA_VEICULO_CD)}
-          ${fg('PONTO_OFF_MOTO','Ponto OFF Motorista (registrado no CD)','time', d.PONTO_OFF_MOT||d.PONTO_OFF_MOTO)}
-          ${fg('DATA_CHEGADA','Data Chegada','date', d.DATA_CHEGADA)}
-          ${fg('KM_CHEGADA','KM Chegada','number', d.KM_CHEGADA)}
-          <div class="fg"><label>Observações</label><textarea id="f-OBSERVACOES" rows="3">${d.OBSERVACOES||''}</textarea></div>
-
-          <button class="btn-salvar" onclick="salvar()">💾 Salvar Lançamento</button>
-          <div id="msg-ok" style="display:none" class="msg-ok">✅ Salvo com sucesso!</div>
-        </div>`;
-
-      // listeners para recalcular
-      ['PONTO_ON','PONTO_OFF_MOTO','KM_SAIDA','KM_CHEGADA','ABERTURA_1','SAIDA_1','ABERTURA_2','SAIDA_2'].forEach(id=>{
-        const el = $('f-'+id); if(el) el.addEventListener('input', recalc);
-      });
-      recalc();
+        <div class="usr-acoes">${acoes}</div>
+      </div>`;
     }
 
-    function fg(id, label, type, val) {
-      const v = val||'';
-      if (type==='date') return `<div class="fg"><label>${label}</label><input id="f-${id}" type="date" value="${v}"></div>`;
-      if (type==='time') return `<div class="fg"><label>${label}</label><input id="f-${id}" type="time" value="${v}"></div>`;
-      return `<div class="fg"><label>${label}</label><input id="f-${id}" type="${type}" value="${v}" placeholder="${label}"></div>`;
-    }
-
-    function recalc() {
-      const g = id => { const e=$('f-'+id); return e?e.value:''; };
-      const s = (id,v) => { const e=$(id); if(e&&v) e.textContent=v; };
-      s('c-PREV', calcPrevisao(g('PONTO_ON')));
-      s('c-HTOT', calcHoraTotal(g('PONTO_ON'), g('PONTO_OFF_MOTO')));
-      s('c-KMP',  calcKmPerc(g('KM_SAIDA'), g('KM_CHEGADA')) ? calcKmPerc(g('KM_SAIDA'),g('KM_CHEGADA'))+' km' : '');
-      const tl1 = calcTL(g('ABERTURA_1'),g('SAIDA_1'));
-      const tl2 = calcTL(g('ABERTURA_2'),g('SAIDA_2'));
-      s('c-TLJ', calcTotalLoja(tl1,tl2));
-    }
-
-    window.voltarListaReal = () => {
-      $('form-tela').style.display  = 'none';
-      $('lista-section').style.display = 'block';
+    window.aprovarUsuario = async uid => {
+      await updateDoc(doc(db,'usuarios',uid), {status:'ativo'});
+    };
+    window.bloquearUsuario = async uid => {
+      await updateDoc(doc(db,'usuarios',uid), {status:'bloqueado'});
+    };
+    window.excluirUsuario = async (uid, nome) => {
+      if (!confirm(`Excluir ${nome}? Esta ação não pode ser desfeita.`)) return;
+      await deleteDoc(doc(db,'usuarios',uid));
     };
 
-    window.salvar = async () => {
-      const g = id => { const e=$('f-'+id); return e?e.value.trim():''; };
-      const c = id => { const e=$(id); return e?e.textContent:''; };
-      const tl1 = calcTL(g('ABERTURA_1'),g('SAIDA_1'));
-      const tl2 = calcTL(g('ABERTURA_2'),g('SAIDA_2'));
-
-      const payload = {
-        DATA: dadosForm.DATA||hojeISO(), OP: currentPerfil.op,
-        VEICULO: g('VEICULO')||dadosForm.VEICULO||'',
-        MOTORISTA: g('MOTORISTA'), DESTINO: g('DESTINO'),
-        PONTO_ON: g('PONTO_ON'), PREVISAO_REFEICAO: c('c-PREV'),
-        SAIDA_VEICULO_CD: g('SAIDA_VEICULO_CD'), SM: g('SM'),
-        DATA_CARRG: g('DATA_CARRG'), ALMOCO: g('ALMOCO'),
-        KM_SAIDA: g('KM_SAIDA'), LOJA_1: g('LOJA_1'),
-        ABERTURA_1: g('ABERTURA_1'), FECHADO_1: g('FECHADO_1'), SAIDA_1: g('SAIDA_1'),
-        TOTAL_LOJA_1: tl1, LOJA_2: g('LOJA_2'),
-        ABERTURA_2: g('ABERTURA_2'), FECHADO_2: g('FECHADO_2'), SAIDA_2: g('SAIDA_2'),
-        TOTAL_LOJA_2: tl2, TOTAL_LOJA: calcTotalLoja(tl1,tl2),
-        DIESEL_CHEGADA: g('DIESEL_CHEGADA'), CHEGADA_VEICULO_CD: g('CHEGADA_VEICULO_CD'),
-        PONTO_OFF_MOT: g('PONTO_OFF_MOTO'),        // col 30 — preenchido pelo auxiliar
-        PONTO_OFF_MOTO: g('PONTO_OFF_MOTO'),       // col 7  — fórmula (=col 30)
-        HORA_TOTAL_MOTORISTA: c('c-HTOT'),
-        DATA_CHEGADA: g('DATA_CHEGADA'), KM_CHEGADA: g('KM_CHEGADA'),
-        KM_PERCORRIDO: calcKmPerc(g('KM_SAIDA'),g('KM_CHEGADA')),
-        OBSERVACOES: g('OBSERVACOES'),
-        _por: currentUser.email, _em: serverTimestamp()
-      };
-
-      const btn = document.querySelector('.btn-salvar');
-      btn.disabled=true; btn.textContent='Salvando...';
-      try {
-        let docId = dadosForm.fid;
-        if (!docId) docId = `${hojeDocId()}_${currentPerfil.op}_${payload.VEICULO.replace(/\s/g,'_')||Date.now()}`;
-        const { setDoc: sd, doc: dc } = await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js");
-        await setDoc(doc(db,'lancamentos',docId), payload, {merge:true});
-        $('msg-ok').style.display='block';
-        setTimeout(()=>{ $('msg-ok').style.display='none'; },2500);
-      } catch(e) { alert('Erro: '+e.message); }
-      btn.disabled=false; btn.textContent='💾 Salvar Lançamento';
-    };
   </script>
 
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     :root{
-      --bg:#0f1923;--surf:#162130;--bord:#1e3048;
-      --acc:#f0a500;--acc2:#00c9a7;--text:#e8edf2;--muted:#6b8099;
-      --danger:#e85555;
+      --bg:#080f18;--surf:#0e1a28;--card:#11202f;--bord:#1b2e42;
+      --acc:#f0a500;--text:#dde6ef;--muted:#5a7a99;--danger:#e85555;
     }
-    html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;font-size:15px;overscroll-behavior:none}
+    html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif}
+    .mono{font-family:'JetBrains Mono',monospace;font-size:13px}
 
-    /* ── telas de espera ── */
-    .tela-central{display:none;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px;text-align:center}
-    .tela-central .icone{font-size:56px;margin-bottom:20px}
-    .tela-central h2{font-family:'Barlow Condensed',sans-serif;font-size:26px;margin-bottom:10px}
-    .tela-central p{color:var(--muted);font-size:14px;max-width:280px;line-height:1.6}
-    .btn-sair{margin-top:24px;padding:10px 28px;background:none;border:1px solid var(--bord);color:var(--muted);border-radius:8px;cursor:pointer;font-size:14px}
-    .btn-sair:hover{border-color:var(--danger);color:var(--danger)}
-
-    /* ── login / cadastro ── */
-    .auth-wrap{display:none;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}
-    .auth-box{width:100%;max-width:380px;background:var(--surf);border:1px solid var(--bord);border-radius:16px;padding:36px 28px}
-    .logo{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:40px;color:var(--acc);text-align:center;line-height:1}
-    .logo-sub{font-size:11px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);text-align:center;margin-bottom:32px}
+    /* LOGIN */
+    #login-tela{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+    .auth-box{background:var(--surf);border:1px solid var(--bord);border-radius:16px;padding:44px 32px;width:100%;max-width:380px}
+    .logo{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:36px;color:var(--acc)}
+    .logo-sub{font-size:11px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-bottom:32px}
     .fg{margin-bottom:14px}
     .fg label{display:block;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
-    .fg input,.fg select,.fg textarea{width:100%;background:var(--bg);border:1px solid var(--bord);border-radius:8px;padding:11px 13px;color:var(--text);font-size:15px;font-family:'Barlow',sans-serif;outline:none;transition:border-color .2s;-webkit-appearance:none}
-    .fg input:focus,.fg select:focus,.fg textarea:focus{border-color:var(--acc)}
-    .fg select option{background:var(--bg)}
-    .btn-primary{width:100%;margin-top:6px;padding:14px;background:var(--acc);color:#0f1923;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;cursor:pointer;transition:opacity .2s}
-    .btn-primary:hover{opacity:.9}
-    .btn-primary:disabled{opacity:.5}
-    .link-btn{width:100%;margin-top:14px;padding:10px;background:none;border:1px solid var(--bord);color:var(--muted);border-radius:8px;cursor:pointer;font-size:14px}
-    .link-btn:hover{border-color:var(--acc);color:var(--acc)}
+    .fg input{width:100%;background:var(--bg);border:1px solid var(--bord);border-radius:8px;padding:12px 14px;color:var(--text);font-size:15px;outline:none;transition:border-color .2s}
+    .fg input:focus{border-color:var(--acc)}
+    .btn-primary{width:100%;margin-top:6px;padding:14px;background:var(--acc);color:#080f18;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;cursor:pointer}
     .erro{display:none;background:#e8555520;border:1px solid var(--danger);border-radius:8px;padding:10px 14px;color:var(--danger);font-size:13px;margin-top:12px;text-align:center}
 
-    /* ── app ── */
-    #app-tela{display:none}
-    .topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:var(--surf);border-bottom:1px solid var(--bord);position:sticky;top:0;z-index:100}
-    .topbar-left{display:flex;flex-direction:column;gap:2px}
-    .topbar-user{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px}
-    .topbar-meta{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:8px}
-    .op-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;background:var(--acc);color:#0f1923}
+    /* DASHBOARD */
+    #dashboard-tela{display:none}
+    .topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:var(--surf);border-bottom:1px solid var(--bord)}
+    .brand{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:22px;color:var(--acc)}
+    .brand span{color:var(--muted);font-weight:400;font-size:13px;margin-left:8px}
+    .topbar-r{display:flex;align-items:center;gap:16px}
+    #relogio{font-family:'JetBrains Mono',monospace;font-size:22px;color:var(--acc)}
     .btn-logout{background:none;border:1px solid var(--bord);color:var(--muted);padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px}
-    .btn-logout:hover{border-color:var(--danger);color:var(--danger)}
+    .btn-logout:hover{color:var(--danger);border-color:var(--danger)}
 
-    #lista-section{padding:20px}
-    .dia-label{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
-    .btn-novo{display:flex;align-items:center;justify-content:center;width:100%;padding:13px;background:transparent;border:2px dashed var(--bord);border-radius:10px;color:var(--acc);font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:600;cursor:pointer;margin-bottom:16px;transition:all .2s}
-    .btn-novo:hover{border-color:var(--acc);background:#f0a50010}
-    .card{background:var(--surf);border:1px solid var(--bord);border-left:4px solid var(--bord);border-radius:12px;padding:14px;cursor:pointer;transition:transform .1s;margin-bottom:12px}
-    .card:active{transform:scale(.98)}
-    .status-verde{border-left-color:#00c9a7}.status-amarelo{border-left-color:#fbbf24}
-    .status-laranja{border-left-color:#f97316}.status-azul{border-left-color:#4da6ff}
-    .status-cinza{border-left-color:var(--muted)}
-    .card-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
-    .card-placa{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:20px}
-    .badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600}
-    .badge-verde{background:#00c9a720;color:#00c9a7}.badge-amarelo{background:#fbbf2420;color:#fbbf24}
-    .badge-laranja{background:#f9731620;color:#f97316}.badge-azul{background:#4da6ff20;color:#4da6ff}
-    .badge-cinza{background:#6b809920;color:var(--muted)}
-    .card-mot{font-size:13px;color:var(--muted);margin-bottom:8px}
-    .card-info{display:flex;gap:12px;font-size:12px;color:var(--muted);flex-wrap:wrap}
-    .empty{text-align:center;padding:40px 20px}
-    .empty-icon{font-size:48px;margin:20px 0 10px}
-    .empty p{color:var(--muted)}
+    /* ABAS */
+    .abas{display:flex;gap:0;padding:0 24px;background:var(--surf);border-bottom:1px solid var(--bord)}
+    .aba-btn{padding:12px 20px;background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);cursor:pointer;font-size:14px;font-weight:500;position:relative;transition:color .2s}
+    .aba-btn.ativa{color:var(--acc);border-bottom-color:var(--acc)}
+    .aba-btn:hover{color:var(--text)}
+    .badge-n{display:none;position:absolute;top:8px;right:6px;background:var(--danger);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700}
 
-    /* ── formulário ── */
-    #form-tela{display:none;padding-bottom:40px}
-    .form-header{display:flex;align-items:center;gap:14px;padding:14px 20px;background:var(--surf);border-bottom:1px solid var(--bord);position:sticky;top:57px;z-index:99}
-    .btn-voltar{background:none;border:1px solid var(--bord);color:var(--muted);padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;white-space:nowrap}
-    .form-veiculo{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:22px}
-    .form-sub{font-size:12px;color:var(--muted)}
-    .form-body{padding:20px;display:flex;flex-direction:column;gap:2px}
-    .sec-title{font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding:18px 0 8px;border-bottom:1px solid var(--bord);margin-bottom:10px}
-    .formula-title{color:var(--acc2)!important}
-    .formula-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px}
-    .fro{display:flex;justify-content:space-between;align-items:center;padding:9px 11px;background:#ffffff06;border-radius:8px;margin-bottom:6px;font-size:13px}
-    .fro span:first-child{color:var(--muted)}
-    .calc{color:var(--acc2)!important;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700}
-    .btn-salvar{width:100%;margin-top:22px;padding:16px;background:var(--acc);color:#0f1923;border:none;border-radius:10px;font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;cursor:pointer}
-    .msg-ok{margin-top:12px;padding:12px;background:#00c9a720;border:1px solid var(--acc2);border-radius:8px;color:var(--acc2);text-align:center;font-weight:600}
+    /* CARDS RESUMO */
+    .resumo{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:20px 24px 0}
+    .cs{background:var(--card);border:1px solid var(--bord);border-radius:12px;padding:18px}
+    .cs .num{font-family:'Barlow Condensed',sans-serif;font-size:44px;font-weight:900;line-height:1}
+    .cs .lbl{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-top:4px}
+    .n-total{color:var(--text)}.n-ok{color:#34d399}.n-rota{color:#fbbf24}.n-pend{color:var(--muted)}
+
+    /* BARRA OPs */
+    .ops-bar{display:flex;gap:10px;padding:14px 24px 0}
+    .op-c{flex:1;background:var(--card);border:1px solid var(--bord);border-radius:10px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between}
+    .op-n{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px}
+    .op-cnt{font-family:'JetBrains Mono',monospace;font-size:22px}
+    .op-ls .op-n,.op-ls .op-cnt{color:#4da6ff}
+    .op-tl .op-n,.op-tl .op-cnt{color:#ff8c42}
+    .op-ht .op-n,.op-ht .op-cnt{color:#a78bfa}
+    .op-cv .op-n,.op-cv .op-cnt{color:#34d399}
+
+    /* FILTROS */
+    .filtros{display:flex;align-items:center;gap:8px;padding:14px 24px 0;flex-wrap:wrap}
+    .filtros-l{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted)}
+    .btn-op{padding:5px 14px;border-radius:20px;border:1px solid var(--bord);background:transparent;color:var(--muted);cursor:pointer;font-size:13px;font-weight:600;transition:all .15s}
+    .btn-op.ativo{background:var(--acc);border-color:var(--acc);color:#080f18}
+
+    /* TABELA */
+    .tab-wrap{padding:14px 24px 40px;overflow-x:auto}
+    .cnt-label{font-size:12px;color:var(--muted);margin-bottom:8px}
+    table{width:100%;border-collapse:collapse}
+    thead th{text-align:left;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);padding:10px 12px;border-bottom:1px solid var(--bord);white-space:nowrap}
+    .tr-data td{padding:11px 12px;border-bottom:1px solid #0d1e2e;font-size:14px;vertical-align:middle}
+    .tr-data:hover{background:#ffffff05;cursor:pointer}
+    .op-pill{display:inline-block;padding:2px 10px;border-radius:4px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px}
+    .col-placa{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px}
+    .st-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+    .empty-row{text-align:center;padding:60px;color:var(--muted)}
+
+    /* USUÁRIOS */
+    #sec-usuarios{display:none;padding:20px 24px 40px}
+    .usr-grupo-title{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding-bottom:10px;border-bottom:1px solid var(--bord);margin-bottom:12px}
+    .usr-card{background:var(--card);border:1px solid var(--bord);border-radius:12px;padding:16px;margin-bottom:10px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
+    .usr-nome{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px}
+    .usr-email{font-size:13px;color:var(--muted);margin:2px 0 8px}
+    .usr-tags{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+    .cargo-tag{font-size:11px;background:#ffffff10;border:1px solid var(--bord);border-radius:4px;padding:2px 8px;color:var(--muted)}
+    .status-tag{font-size:11px;border-radius:4px;padding:2px 8px;font-weight:600}
+    .st-ativo{background:#34d39920;color:#34d399}
+    .st-pendente{background:#fbbf2420;color:#fbbf24}
+    .st-bloqueado{background:#e8555520;color:var(--danger)}
+    .usr-acoes{display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0}
+    .btn-usr{padding:7px 14px;border-radius:8px;border:1px solid var(--bord);background:none;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s;white-space:nowrap}
+    .btn-aprovar{color:#34d399;border-color:#34d39940}.btn-aprovar:hover{background:#34d39920}
+    .btn-rejeitar,.btn-excluir{color:var(--danger);border-color:#e8555540}.btn-rejeitar:hover,.btn-excluir:hover{background:#e8555520}
+    .btn-bloquear{color:#fbbf24;border-color:#fbbf2440}.btn-bloquear:hover{background:#fbbf2420}
+    .usr-empty{color:var(--muted);font-size:14px;padding:12px 0}
+
+    /* OVERLAY DETALHE */
+    #overlay{display:none;position:fixed;inset:0;background:#000a;z-index:200;align-items:flex-end;justify-content:center}
+    .det-panel{background:var(--surf);border:1px solid var(--bord);border-radius:20px 20px 0 0;width:100%;max-width:600px;max-height:85vh;overflow-y:auto;padding:28px}
+    .det-hd{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px}
+    .det-titulo{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:26px;display:flex;align-items:center;gap:10px}
+    .det-sub{font-size:13px;color:var(--muted);margin-top:2px}
+    .det-st{display:flex;align-items:center;font-size:13px;margin-top:6px}
+    .btn-fechar{background:none;border:1px solid var(--bord);color:var(--muted);padding:8px 16px;border-radius:8px;cursor:pointer}
+    .det-sep{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding:14px 0 6px;border-bottom:1px solid var(--bord);margin-bottom:6px}
+    .det-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #0d1e2e}
+    .det-l{font-size:12px;color:var(--muted)}.det-v{font-size:13px;font-weight:500;text-align:right;max-width:65%}
+
+    @media(max-width:768px){
+      .resumo{grid-template-columns:repeat(2,1fr)}
+      .ops-bar{flex-wrap:wrap}
+      .brand span{display:none}
+      #relogio{font-size:18px}
+      .tab-wrap{padding:12px}
+    }
   </style>
 </head>
 <body>
 
 <!-- LOGIN -->
-<div id="login-tela" class="auth-wrap" style="display:flex">
+<div id="login-tela">
   <div class="auth-box">
-    <div class="logo">FROTA<br>FIELD</div>
-    <div class="logo-sub">Controle Operacional</div>
-    <div class="fg"><label>Email</label><input id="l-email" type="email" placeholder="seu@email.com" autocomplete="email"></div>
+    <div class="logo">FROTA</div>
+    <div class="logo-sub">Central de Supervisão</div>
+    <div class="fg"><label>Email</label><input id="l-email" type="email" placeholder="supervisao@empresa.com" autocomplete="email"></div>
     <div class="fg"><label>Senha</label><input id="l-senha" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')fazerLogin()"></div>
     <button id="btn-login" class="btn-primary" onclick="fazerLogin()">ENTRAR</button>
-    <button class="link-btn" onclick="irCadastro()">Solicitar acesso</button>
     <div id="erro-login" class="erro"></div>
   </div>
 </div>
 
-<!-- CADASTRO -->
-<div id="cadastro-tela" class="auth-wrap">
-  <div class="auth-box">
-    <div class="logo" style="font-size:32px">SOLICITAR<br>ACESSO</div>
-    <div class="logo-sub">Aguarde aprovação da supervisão</div>
-    <div class="fg"><label>Nome completo</label><input id="c-nome" type="text" placeholder="Seu nome"></div>
-    <div class="fg"><label>Email</label><input id="c-email" type="email" placeholder="seu@email.com"></div>
-    <div class="fg"><label>Senha (mín. 6 caracteres)</label><input id="c-senha" type="password" placeholder="••••••••"></div>
-    <div class="fg"><label>Operação</label>
-      <select id="c-op">
-        <option value="">Selecione a operação</option>
-        <option value="LS">LS</option>
-        <option value="TL">TL</option>
-        <option value="HT">HT</option>
-        <option value="CV">CV</option>
-      </select>
-    </div>
-    <div class="fg"><label>Cargo</label>
-      <select id="c-cargo">
-        <option value="">Selecione o cargo</option>
-        <option value="auxiliar">Auxiliar</option>
-        <option value="encarregado">Encarregado</option>
-      </select>
-    </div>
-    <button id="btn-cadastro" class="btn-primary" onclick="fazerCadastro()">SOLICITAR ACESSO</button>
-    <button class="link-btn" onclick="irLogin()">← Voltar ao login</button>
-    <div id="erro-cadastro" class="erro"></div>
-  </div>
-</div>
+<!-- DASHBOARD -->
+<div id="dashboard-tela">
 
-<!-- AGUARDANDO APROVAÇÃO -->
-<div id="aguardando-tela" class="tela-central">
-  <div class="icone">⏳</div>
-  <h2>Aguardando aprovação</h2>
-  <p>Seu cadastro foi recebido. A supervisão precisa aprovar o seu acesso antes de você entrar no app.</p>
-  <button class="btn-sair" onclick="fazerLogout()">Sair</button>
-</div>
-
-<!-- BLOQUEADO -->
-<div id="bloqueado-tela" class="tela-central">
-  <div class="icone">🚫</div>
-  <h2>Acesso bloqueado</h2>
-  <p>Seu acesso foi bloqueado pela supervisão. Entre em contato para mais informações.</p>
-  <button class="btn-sair" onclick="fazerLogout()">Sair</button>
-</div>
-
-<!-- APP PRINCIPAL -->
-<div id="app-tela">
   <div class="topbar">
-    <div class="topbar-left">
-      <div class="topbar-user" id="nome-usuario">—</div>
-      <div class="topbar-meta">
-        <span class="op-badge" id="tag-op">—</span>
-        <span id="data-hoje">—</span>
-      </div>
+    <div class="brand">FROTA <span>Supervisão · <span id="sup-nome"></span></span></div>
+    <div class="topbar-r">
+      <span id="relogio">00:00</span>
+      <button class="btn-logout" onclick="fazerLogout()">Sair</button>
     </div>
-    <button class="btn-logout" onclick="fazerLogout()">Sair</button>
   </div>
 
-  <div id="lista-section">
-    <div class="dia-label">Lançamentos do dia</div>
-    <div id="lista-veiculos"><div style="text-align:center;padding:40px;color:var(--muted)">Carregando...</div></div>
+  <!-- Abas -->
+  <div class="abas">
+    <button id="aba-dashboard" class="aba-btn ativa" onclick="irAba('dashboard')">📊 Dashboard</button>
+    <button id="aba-usuarios"  class="aba-btn"       onclick="irAba('usuarios')">
+      👥 Usuários
+      <span id="badge-pendentes" class="badge-n"></span>
+    </button>
   </div>
 
-  <div id="form-tela"></div>
+  <!-- SEÇÃO DASHBOARD -->
+  <div id="sec-dashboard">
+    <div class="resumo">
+      <div class="cs"><div class="num n-total"  id="c-total">0</div><div class="lbl">Total hoje</div></div>
+      <div class="cs"><div class="num n-ok"     id="c-concluido">0</div><div class="lbl">Concluídos</div></div>
+      <div class="cs"><div class="num n-rota"   id="c-rota">0</div><div class="lbl">Em operação</div></div>
+      <div class="cs"><div class="num n-pend"   id="c-pendente">0</div><div class="lbl">Pendentes</div></div>
+    </div>
+    <div class="ops-bar">
+      <div class="op-c op-ls"><span class="op-n">LS</span><span class="op-cnt" id="op-LS">0</span></div>
+      <div class="op-c op-tl"><span class="op-n">TL</span><span class="op-cnt" id="op-TL">0</span></div>
+      <div class="op-c op-ht"><span class="op-n">HT</span><span class="op-cnt" id="op-HT">0</span></div>
+      <div class="op-c op-cv"><span class="op-n">CV</span><span class="op-cnt" id="op-CV">0</span></div>
+    </div>
+    <div class="filtros">
+      <span class="filtros-l">Operação:</span>
+      <button class="btn-op ativo" data-op="TODAS" onclick="setFiltroOp('TODAS')">Todas</button>
+      <button class="btn-op" data-op="LS" onclick="setFiltroOp('LS')" style="color:#4da6ff;border-color:#4da6ff">LS</button>
+      <button class="btn-op" data-op="TL" onclick="setFiltroOp('TL')" style="color:#ff8c42;border-color:#ff8c42">TL</button>
+      <button class="btn-op" data-op="HT" onclick="setFiltroOp('HT')" style="color:#a78bfa;border-color:#a78bfa">HT</button>
+      <button class="btn-op" data-op="CV" onclick="setFiltroOp('CV')" style="color:#34d399;border-color:#34d399">CV</button>
+    </div>
+    <div class="tab-wrap">
+      <div class="cnt-label" id="cnt-label">—</div>
+      <table>
+        <thead>
+          <tr>
+            <th>OP</th><th>Veículo</th><th>Motorista</th>
+            <th>Ponto ON</th><th>Saída CD</th><th>Chegada CD</th>
+            <th>KM</th><th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"><tr><td colspan="8" class="empty-row">Aguardando lançamentos...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- SEÇÃO USUÁRIOS -->
+  <div id="sec-usuarios"></div>
+
+</div>
+
+<!-- OVERLAY DETALHE -->
+<div id="overlay" onclick="if(event.target===this)fecharDetalhe()">
+  <div class="det-panel">
+    <div class="det-hd">
+      <div>
+        <div class="det-titulo" id="det-titulo">—</div>
+        <div class="det-sub"    id="det-sub">—</div>
+        <div class="det-st"     id="det-st">—</div>
+      </div>
+      <button class="btn-fechar" onclick="fecharDetalhe()">✕ Fechar</button>
+    </div>
+    <div id="det-campos"></div>
+  </div>
 </div>
 
 </body>
