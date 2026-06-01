@@ -203,6 +203,12 @@
     }
 
     // ── DETALHE LANÇAMENTO ────────────────────────────────────────────
+    window.apagarLancamentoSup = async (fid) => {
+      if (!confirm('Apagar este lançamento?')) return;
+      await deleteDoc(doc(db,'lancamentos', fid));
+      fecharDetalhe();
+    };
+
     window.abrirDetalhe = fid => {
       const v = todosLanc.find(x=>x.fid===fid);
       if(!v) return;
@@ -233,6 +239,7 @@
         if(!val) return '';
         return `<div class="det-row"><span class="det-l">${l}</span><span class="det-v">${val}</span></div>`;
       }).join('');
+      $('det-campos').innerHTML += `<button onclick="apagarLancamentoSup('${id}')" style="width:100%;margin-top:20px;padding:12px;background:none;border:1px solid #e8555560;color:#e85555;border-radius:8px;cursor:pointer;font-size:14px">🗑 Apagar lançamento</button>`;
       $('overlay').style.display='flex';
     };
     window.fecharDetalhe = () => { $('overlay').style.display='none'; };
