@@ -142,15 +142,30 @@
 
       btn.disabled=true; btn.textContent='Cadastrando...';
       try {
-        const cred = await createUserWithEmailAndPassword(auth, email, senha);
-        await updateProfile(cred.user, { displayName: nome });
-        await setDoc(doc(db,'usuarios', cred.user.uid), {
-          uid: cred.user.uid, nome, email, op, cargo,
+        // Tenta criar usuário no Auth
+        let uid;
+        try {
+          const cred = await createUserWithEmailAndPassword(auth, email, senha);
+          await updateProfile(cred.user, { displayName: nome });
+          uid = cred.user.uid;
+        } catch(authErr) {
+          // Se já existe no Auth, faz login para pegar o UID
+          if (authErr.code === 'auth/email-already-in-use') {
+            const cred2 = await signInWithEmailAndPassword(auth, email, senha);
+            uid = cred2.user.uid;
+          } else {
+            throw authErr;
+          }
+        }
+        // Salva no Firestore
+        await setDoc(doc(db,'usuarios', uid), {
+          uid, nome, email, op, cargo,
           status: 'pendente',
           criadoEm: serverTimestamp()
         });
         // onAuthStateChanged vai pegar e mostrar tela aguardando
       } catch(e) {
+        console.error('Erro cadastro:', e);
         erroCadastro(e.code ? e.code : ('Erro: ' + e.message));
         btn.disabled=false; btn.textContent='SOLICITAR ACESSO';
       }
