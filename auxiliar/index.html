@@ -385,6 +385,8 @@
       $('lista-section').style.display = 'block';
     };
 
+    const WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbyXFnFnYSIv3nbcDvgZHa1iMI5nYWYFOAdnLhSMqAF_eFjIgxlEIfI7D-anH_7UvnYJaQ/exec';
+
     window.salvar = async () => {
       const g = id => { const e=$('f-'+id); return e?e.value.trim():''; };
       const c = id => { const e=$(id); return e?e.textContent:''; };
@@ -420,6 +422,17 @@
         if (!docId) docId = `${hojeDocId()}_${currentPerfil.op}_${payload.VEICULO.replace(/\s/g,'_')||Date.now()}`;
         const { setDoc: sd, doc: dc } = await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js");
         await setDoc(doc(db,'lancamentos',docId), payload, {merge:true});
+
+        // Envia para Google Sheets em tempo real
+        try {
+          await fetch(WEBHOOK_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+          });
+        } catch(we) { console.warn('Webhook error:', we); }
+
         $('msg-ok').style.display='block';
         setTimeout(()=>{ $('msg-ok').style.display='none'; },2500);
       } catch(e) { alert('Erro: '+e.message); }
