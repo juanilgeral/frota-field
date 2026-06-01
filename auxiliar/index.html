@@ -13,7 +13,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
 
   <script type="module">
-    import { initializeApp }                        from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
+    import { initializeApp }                        from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
     import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile }
                                                     from "https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js";
     import { getFirestore, doc, setDoc, getDoc, collection, query, where, onSnapshot, serverTimestamp }
@@ -151,7 +151,7 @@
         });
         // onAuthStateChanged vai pegar e mostrar tela aguardando
       } catch(e) {
-        erroCadastro(e.code==='auth/email-already-in-use'?'Este email já está cadastrado.':'Erro ao cadastrar. Tente novamente.');
+        erroCadastro(e.code ? e.code : ('Erro: ' + e.message));
         btn.disabled=false; btn.textContent='SOLICITAR ACESSO';
       }
     };
