@@ -52,7 +52,7 @@
     const $ = id => document.getElementById(id);
 
     function hojeISO() {
-      const d = new Date();
+      const d = new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Sao_Paulo'}));
       return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getFullYear()).slice(-2)}`;
     }
 
