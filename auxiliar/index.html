@@ -318,7 +318,24 @@
           </select></div>`:`<div class="fro"><span>Veículo</span><span>${d.VEICULO||'—'}</span></div>`}
 
           <div class="sec-title">📋 Dados da Base</div>
-          ${fg('MOTORISTA','Motorista','text', d.MOTORISTA)}
+          <div class="fg"><label>Motorista</label>
+          <select id="f-MOTORISTA">
+            <option value="">Selecione o motorista</option>
+            <option>ALEXANDRE</option><option>DANIEL</option><option>DEVANILSO</option>
+            <option>HERIBERTO</option><option>SÉRGIO</option><option>ANTÔNIO</option>
+            <option>CAMARA</option><option>NEVES</option><option>VALDIR</option>
+            <option>ROGERIO</option><option>EDILSON</option><option>SÉRGIO SILVA</option>
+            <option>GILMAR</option><option>SANDRO</option><option>LUIZ</option>
+            <option>MEDEIROS</option><option>NOGUEIRA</option><option>RICARDO</option>
+            <option>EDUARDO</option><option>CLAUDINEI</option><option>DUARTE</option>
+            <option>ROBERTO</option><option>ROSENDO</option><option>ANDERSON</option>
+            <option>ISAÍAS</option><option>RENÊ</option><option>ADRIANO</option>
+            <option>JOEL</option><option>WALMIR</option><option>ANDRÉ</option>
+            <option>VAGNER</option><option>CÉLIO</option><option>OLIVEIRA</option>
+            <option>MARCIO</option><option>ROBSON</option><option>THIAGO</option>
+            <option>CARLOS</option><option>MARCELO</option><option>VITOR</option>
+            <option>EDSON</option><option>LEONARDO</option><option>EDILEI</option>
+          </select></div>
           ${fg('DESTINO','Destino / Rota','text', d.DESTINO)}
           ${fg('PONTO_ON','Ponto ON Motorista','time', d.PONTO_ON)}
           ${fg('SAIDA_VEICULO_CD','Saída Veículo CD','time', d.SAIDA_VEICULO_CD)}
