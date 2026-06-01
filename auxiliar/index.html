@@ -236,12 +236,21 @@
             ${v.KM_SAIDA?`<span>📍 ${v.KM_SAIDA} km</span>`:''}
             ${v.CHEGADA_VEICULO_CD?`<span>🏁 ${v.CHEGADA_VEICULO_CD}</span>`:''}
           </div>
+          <div style="margin-top:8px;text-align:right">
+            <button onclick="event.stopPropagation();apagarLancamento('${v.fid}')" style="background:none;border:1px solid #e8555540;color:#e85555;border-radius:6px;padding:4px 12px;font-size:12px;cursor:pointer">🗑 Apagar</button>
+          </div>
         </div>`;
       }).join('');
     }
 
     // ── FORMULÁRIO ────────────────────────────────────────────────────
     let dadosForm = null;
+
+    window.apagarLancamento = async (fid) => {
+      if (!confirm('Apagar este lançamento?')) return;
+      const { deleteDoc, doc: dc } = await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js");
+      await deleteDoc(doc(db,'lancamentos', fid));
+    };
 
     window.abrirNovo = () => {
       dadosForm = {DATA: hojeISO(), OP: currentPerfil.op, _novo: true};
@@ -440,15 +449,14 @@
         const { setDoc: sd, doc: dc } = await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js");
         await setDoc(doc(db,'lancamentos',docId), payload, {merge:true});
 
-        // Envia para Google Sheets em tempo real
+        // Envia para Google Sheets em tempo real (contorna CORS)
         try {
-          await fetch(WEBHOOK_URL, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(payload)
+          const params = encodeURIComponent(JSON.stringify(payload));
+          await fetch(WEBHOOK_URL + '?dados=' + params, {
+            method: 'GET',
+            mode: 'no-cors'
           });
-        } catch(we) { console.warn('Webhook error:', we); }
+        } catch(we) { console.warn('Webhook:', we); }
 
         $('msg-ok').style.display='block';
         setTimeout(()=>{ $('msg-ok').style.display='none'; },2500);
