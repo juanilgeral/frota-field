@@ -23,12 +23,12 @@
     //  SUBSTITUA PELOS DADOS DO SEU PROJETO FIREBASE
     // ═══════════════════════════════════════════════════════════════
     const FIREBASE_CONFIG = {
-      apiKey:            "AIzaSyA211xR6Nk3bWH8lJWzYkHTMnlfHPar8A",
-      authDomain:        "frota-field.firebaseapp.com",
-      projectId:         "frota-field",
-      storageBucket:     "frota-field.firebasestorage.app",
-      messagingSenderId: "642844753455",
-      appId:             "1:642844753455:web:9be3f31a8bb735dfbd50da"
+      apiKey:            "SUA_API_KEY",
+      authDomain:        "SEU_PROJETO.firebaseapp.com",
+      projectId:         "SEU_PROJETO",
+      storageBucket:     "SEU_PROJETO.appspot.com",
+      messagingSenderId: "SEU_SENDER_ID",
+      appId:             "SEU_APP_ID"
     };
 
     const app  = initializeApp(FIREBASE_CONFIG);
@@ -82,11 +82,29 @@
     });
 
     // ── TELAS ────────────────────────────────────────────────────────
+    // ── TELAS ────────────────────────────────────────────────────────
     function mostrarTela(nome) {
-      ['login','cadastro','aguardando','bloqueado','app'].forEach(t => {
+      ['login','cadastro','aguardando','bloqueado'].forEach(t => {
         const el = $(t+'-tela');
-        if (el) el.style.display = (t === nome ? (nome==='app'?'block':'flex') : 'none');
+        if (el) el.style.display = 'none';
       });
+      const appEl  = $('app-tela');
+      const formEl = $('form-tela');
+      if (appEl) appEl.style.display = 'none';
+      if (nome === 'login')      { $('login-tela').style.display='flex'; }
+      else if (nome==='cadastro')    { $('cadastro-tela').style.display='flex'; }
+      else if (nome==='aguardando')  { $('aguardando-tela').style.display='flex'; }
+      else if (nome==='bloqueado')   { $('bloqueado-tela').style.display='flex'; }
+      else if (nome==='app')  {
+        appEl.style.display='block';
+        if(formEl) formEl.style.display='none';
+        if($('lista-section')) $('lista-section').style.display='block';
+      }
+      else if (nome==='form') {
+        appEl.style.display='block';
+        if(formEl) formEl.style.display='block';
+        if($('lista-section')) $('lista-section').style.display='none';
+      }
     }
 
     // ── LOGIN ────────────────────────────────────────────────────────
@@ -207,25 +225,6 @@
       mostrarTela('form');
     };
     window.voltarLista = () => mostrarTela('app');
-
-    // injeta tela form dinamicamente
-    function mostrarTela(nome) {
-      ['login','cadastro','aguardando','bloqueado'].forEach(t => {
-        const el = $(t+'-tela');
-        if (el) el.style.display = 'none';
-      });
-      const appEl  = $('app-tela');
-      const formEl = $('form-tela');
-      if (nome === 'login')     { $('login-tela').style.display='flex'; }
-      else if (nome==='cadastro') { $('cadastro-tela').style.display='flex'; }
-      else if (nome==='aguardando') { $('aguardando-tela').style.display='flex'; }
-      else if (nome==='bloqueado')  { $('bloqueado-tela').style.display='flex'; }
-      else if (nome==='app')    { appEl.style.display='block'; if(formEl) formEl.style.display='none'; }
-      else if (nome==='form')   { appEl.style.display='block'; if(formEl) formEl.style.display='block'; if($('lista-section')) $('lista-section').style.display='none'; }
-    }
-
-    // patch: override mostrarTela para app/form toggling
-    const _mostrarTela = mostrarTela;
 
     function renderForm() {
       const d = dadosForm;
