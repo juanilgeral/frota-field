@@ -266,6 +266,60 @@
       $('overlay').style.display='flex';
     };
 
+    window.abrirNovoSup = () => {
+      const hoje = new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Sao_Paulo'}));
+      const dd = String(hoje.getDate()).padStart(2,'0');
+      const mm = String(hoje.getMonth()+1).padStart(2,'0');
+      const aa = String(hoje.getFullYear()).slice(-2);
+      const dataHoje = `${dd}/${mm}/${aa}`;
+      dadosDetalheSup = { fid: null, DATA: dataHoje, OP: '', VEICULO: '', _novo: true };
+
+      $('det-titulo').innerHTML = `+ Novo Lançamento`;
+      $('det-sub').textContent  = dataHoje;
+      $('det-st').innerHTML     = '';
+
+      const fgs = (id, label, type, val) => {
+        const v2 = val||'';
+        if(type==='sel-mot') return `<div class="det-fg"><label>${label}</label><select id="sf-${id}" class="det-input"><option value="">—</option>${MOTORISTAS_SUP.map(m=>`<option${m===v2?' selected':''}>${m}</option>`).join('')}</select></div>`;
+        if(type==='sel-veic') return `<div class="det-fg"><label>${label}</label><select id="sf-${id}" class="det-input"><option value="">—</option>${VEICULOS_SUP.map(m=>`<option${m===v2?' selected':''}>${m}</option>`).join('')}</select></div>`;
+        if(type==='sel-op') return `<div class="det-fg"><label>${label}</label><select id="sf-${id}" class="det-input"><option value="">—</option><option>LS</option><option>TL</option><option>HT</option><option>CV</option></select></div>`;
+        if(type==='textarea') return `<div class="det-fg"><label>${label}</label><textarea id="sf-${id}" class="det-input" rows="2">${v2}</textarea></div>`;
+        return `<div class="det-fg"><label>${label}</label><input id="sf-${id}" type="${type}" value="${v2}" class="det-input"></div>`;
+      };
+
+      $('det-campos').innerHTML = `
+        <div class="det-sec">📋 Dados da Base</div>
+        ${fgs('OP','Operação','sel-op', '')}
+        ${fgs('VEICULO','Veículo','sel-veic', '')}
+        ${fgs('MOTORISTA','Motorista','sel-mot', '')}
+        ${fgs('DESTINO','Destino / Rota','text', '')}
+        ${fgs('PONTO_ON','Ponto ON Motorista','time', '')}
+        ${fgs('SAIDA_VEICULO_CD','Saída Veículo CD','time', '')}
+        ${fgs('SM','SM','text', '')}
+        ${fgs('DATA_CARRG','Data Carregamento','date', '')}
+        ${fgs('ALMOCO','Almoço (duração)','time', '')}
+        ${fgs('KM_SAIDA','KM Saída','number', '')}
+        ${fgs('LOJA_1','Prev. Chegada 1ª Loja','time', '')}
+        ${fgs('ABERTURA_1','Abertura 1ª Loja','time', '')}
+        <div class="det-sec">🚛 Preenchimento em Campo</div>
+        ${fgs('FECHADO_1','Fechado 1ª Loja','time', '')}
+        ${fgs('SAIDA_1','Saída 1ª Loja','time', '')}
+        ${fgs('LOJA_2','Prev. Chegada 2ª Loja','time', '')}
+        ${fgs('ABERTURA_2','Abertura 2ª Loja','time', '')}
+        ${fgs('FECHADO_2','Fechado 2ª Loja','time', '')}
+        ${fgs('SAIDA_2','Saída 2ª Loja','time', '')}
+        ${fgs('DIESEL_CHEGADA','Diesel Chegada','time', '')}
+        ${fgs('CHEGADA_VEICULO_CD','Chegada Veículo CD','time', '')}
+        ${fgs('PONTO_OFF_MOT','Ponto OFF Motorista (CD)','time', '')}
+        ${fgs('DATA_CHEGADA','Data Chegada','date', '')}
+        ${fgs('KM_CHEGADA','KM Chegada','number', '')}
+        ${fgs('OBSERVACOES','Observações','textarea', '')}
+        <button onclick="salvarSup()" style="width:100%;margin-top:16px;padding:14px;background:#f0a500;color:#080f18;border:none;border-radius:8px;font-size:16px;font-weight:700;cursor:pointer">💾 Salvar</button>
+        <div id="msg-ok-sup" style="display:none;margin-top:10px;padding:10px;background:#00c9a720;border:1px solid #00c9a7;border-radius:8px;color:#00c9a7;text-align:center">✅ Salvo!</div>
+      `;
+      $('overlay').style.display='flex';
+    };
+
     window.salvarSup = async () => {
       const g = id => { const e=document.getElementById('sf-'+id); return e?e.value.trim():''; };
       const v = dadosDetalheSup;
@@ -280,7 +334,7 @@
       const tTotal = () => { const a=toMin(tl1),b=toMin(tl2); return (a||b)?toHM(a+b):''; };
 
       const payload = {
-        DATA: v.DATA, OP: v.OP,
+        DATA: v.DATA, OP: v.OP || g('OP'),
         VEICULO: g('VEICULO')||v.VEICULO, MOTORISTA: g('MOTORISTA'),
         DESTINO: g('DESTINO'), PONTO_ON: g('PONTO_ON'), PREVISAO_REFEICAO: prev,
         SAIDA_VEICULO_CD: g('SAIDA_VEICULO_CD'), SM: g('SM'),
@@ -298,7 +352,14 @@
       };
 
       try {
-        await setDoc(doc(db,'lancamentos', v.fid), payload, {merge:true});
+        // Novo lançamento ou edição
+        let docId = v.fid;
+        if (!docId) {
+          const hoje = new Date(new Date().toLocaleString('en-US', {timeZone:'America/Sao_Paulo'}));
+          const docDate = `${hoje.getFullYear()}${String(hoje.getMonth()+1).padStart(2,'0')}${String(hoje.getDate()).padStart(2,'0')}`;
+          docId = `${docDate}_${payload.OP}_${(payload.VEICULO||'').replace(/\s/g,'_')||Date.now()}`;
+        }
+        await setDoc(doc(db,'lancamentos', docId), payload, {merge:true});
         const params = encodeURIComponent(JSON.stringify(payload));
         await fetch(WEBHOOK_URL_SUP + '?dados=' + params, {method:'GET', mode:'no-cors'});
         const msg = document.getElementById('msg-ok-sup');
@@ -548,7 +609,10 @@
       <button class="btn-op" data-op="CV" onclick="setFiltroOp('CV')" style="color:#34d399;border-color:#34d399">CV</button>
     </div>
     <div class="tab-wrap">
-      <div class="cnt-label" id="cnt-label">—</div>
+      <div style="padding:14px 24px 0">
+        <button onclick="abrirNovoSup()" style="display:flex;align-items:center;justify-content:center;width:100%;padding:12px;background:transparent;border:2px dashed var(--bord);border-radius:10px;color:var(--acc);font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:600;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='var(--acc)'" onmouseout="this.style.borderColor='var(--bord)'">+ Novo lançamento</button>
+      </div>
+      <div class="cnt-label" id="cnt-label" style="padding:14px 24px 0">—</div>
       <table>
         <thead>
           <tr>
