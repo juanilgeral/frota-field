@@ -120,7 +120,7 @@
         if (!melhor) return null;
 
         // Usa TOTAL_LOJA como base, fallback para PONTO_OFF
-        const base = melhor.TOTAL_LOJA || melhor.PONTO_OFF_MOT || melhor.PONTO_OFF_MOTO || '';
+        const base = melhor.PONTO_OFF_MOT || melhor.PONTO_OFF_MOTO || melhor.TOTAL_LOJA || '';
         if (!base) return null;
 
         // PRÓX_HORA_DISP = base + 11h
