@@ -16,7 +16,7 @@
     import { initializeApp }                        from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
     import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile }
                                                     from "https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js";
-    import { getFirestore, doc, setDoc, getDoc, collection, query, where, onSnapshot, serverTimestamp, getDocs, orderBy }
+    import { getFirestore, doc, setDoc, getDoc, deleteDoc, collection, query, where, onSnapshot, serverTimestamp, getDocs }
                                                     from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
 
     const FIREBASE_CONFIG = {
@@ -35,25 +35,53 @@
     let currentUser   = null;
     let currentPerfil = null;
     let veiculosHoje  = [];
+    let abaSelecionada = 'hoje'; // 'hoje' ou 'programacao'
+    let dataProg      = null;   // data selecionada na aba programação
+    let veiculosProg  = [];     // lançamentos da data selecionada
+    let unsubProg     = null;   // listener programação
 
     const $ = id => document.getElementById(id);
 
+    // ── Utilitários de data ──────────────────────────────────────────
+    function nowBR() {
+      return new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Sao_Paulo'}));
+    }
     function hojeISO() {
-      const d = new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Sao_Paulo'}));
+      const d = nowBR();
       return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getFullYear()).slice(-2)}`;
     }
     function hojeLabel() {
-      const d = new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Sao_Paulo'}));
+      const d = nowBR();
       const dias = ['dom','seg','ter','qua','qui','sex','sáb'];
       return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')} (${dias[d.getDay()]})`;
     }
     function hojeDocId() {
-      const d = new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Sao_Paulo'}));
+      const d = nowBR();
       return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
     }
-    function ontemISO() {
-      const d = new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Sao_Paulo'}));
-      d.setDate(d.getDate() - 1);
+    // Retorna ISO (DD/MM/AA) para N dias a partir de hoje
+    function dataFutura(n) {
+      const d = nowBR();
+      d.setDate(d.getDate() + n);
+      return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getFullYear()).slice(-2)}`;
+    }
+    // Retorna label amigável para uma data ISO
+    function labelData(iso) {
+      const [dd,mm,aa] = iso.split('/');
+      const d = new Date(2000+parseInt(aa), parseInt(mm)-1, parseInt(dd));
+      const dias = ['dom','seg','ter','qua','qui','sex','sáb'];
+      return `${dd}/${mm} (${dias[d.getDay()]})`;
+    }
+    // docId prefix para uma data ISO
+    function docIdPrefixData(iso) {
+      const [dd,mm,aa] = iso.split('/');
+      return `20${aa}${mm}${dd}`;
+    }
+    // Dia anterior a uma data ISO
+    function diaAnterior(iso) {
+      const [dd,mm,aa] = iso.split('/');
+      const d = new Date(2000+parseInt(aa), parseInt(mm)-1, parseInt(dd));
+      d.setDate(d.getDate()-1);
       return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getFullYear()).slice(-2)}`;
     }
 
@@ -65,13 +93,12 @@
     const calcTL         = (ab,sa) => ab&&sa ? toHM(Math.max(0,toMin(sa)-toMin(ab))) : '';
     const calcTotalLoja  = (t1,t2) => { const a=toMin(t1),b=toMin(t2); return (a||b)?toHM(a+b):''; };
 
-    // ── DISPONIBILIDADE DO MOTORISTA ─────────────────────────────────
-    // Busca todos os lançamentos do motorista no dia anterior
-    // e calcula PRÓX_HORA_DISP = TOTAL_LOJA + 11h do último lançamento
-    async function buscarDisponibilidade(motorista) {
+    // ── Disponibilidade do motorista ─────────────────────────────────
+    // Recebe a data do lançamento (ISO) e busca o dia anterior
+    async function buscarDisponibilidade(motorista, dataLancamento) {
       if (!motorista) return null;
       try {
-        const ontem = ontemISO();
+        const ontem = diaAnterior(dataLancamento);
         const q = query(
           collection(db, 'lancamentos'),
           where('MOTORISTA', '==', motorista),
@@ -80,25 +107,19 @@
         const snap = await getDocs(q);
         if (snap.empty) return null;
 
-        // Pega o lançamento com maior TOTAL_LOJA (último serviço)
         let melhor = null;
         snap.forEach(d => {
           const dado = d.data();
-          const tl = dado.TOTAL_LOJA || dado.TOTAL_LOJA_2 || dado.TOTAL_LOJA_1 || '';
+          const tl   = dado.TOTAL_LOJA || dado.TOTAL_LOJA_2 || dado.TOTAL_LOJA_1 || '';
           const poff = dado.PONTO_OFF_MOT || dado.PONTO_OFF_MOTO || '';
           if (!melhor) { melhor = dado; return; }
-          // Prefere TOTAL_LOJA maior
           if (tl && toMin(tl) > toMin(melhor.TOTAL_LOJA || '')) melhor = dado;
           else if (!tl && poff && toMin(poff) > toMin(melhor.PONTO_OFF_MOT || '')) melhor = dado;
         });
 
         if (!melhor) return null;
-
-        // Usa TOTAL_LOJA como base, fallback para PONTO_OFF
         const base = melhor.TOTAL_LOJA || melhor.PONTO_OFF_MOT || melhor.PONTO_OFF_MOTO || '';
         if (!base) return null;
-
-        // PRÓX_HORA_DISP = base + 11h
         const proxMin = (toMin(base) + 11 * 60) % 1440;
         return toHM(proxMin);
       } catch(e) {
@@ -107,9 +128,8 @@
       }
     }
 
-    // Mostra ou esconde o aviso de disponibilidade
     async function atualizarDisponibilidade() {
-      const sel = $('f-MOTORISTA');
+      const sel   = $('f-MOTORISTA');
       const aviso = $('aviso-disp');
       if (!sel || !aviso) return;
       const motorista = sel.value;
@@ -119,21 +139,25 @@
       aviso.style.background = '#ffffff10';
       aviso.style.color = 'var(--muted)';
       aviso.textContent = '⏳ Verificando disponibilidade...';
+      delete aviso.dataset.proxHora;
 
-      const proxHora = await buscarDisponibilidade(motorista);
+      // Usa a data do lançamento atual (hoje ou data programação)
+      const dataRef = dadosForm ? dadosForm.DATA : hojeISO();
+      const proxHora = await buscarDisponibilidade(motorista, dataRef);
+
       if (!proxHora) {
         aviso.style.background = '#00c9a715';
         aviso.style.color = 'var(--acc2)';
-        aviso.textContent = '✅ Sem registro ontem — disponível';
+        aviso.textContent = '✅ Sem registro no dia anterior — disponível';
       } else {
         aviso.style.background = '#f0a50015';
         aviso.style.color = 'var(--acc)';
         aviso.textContent = `⏰ Próxima disponibilidade: ${proxHora}`;
-        // Guarda horário para validação ao salvar
         aviso.dataset.proxHora = proxHora;
       }
     }
 
+    // ── AUTH ─────────────────────────────────────────────────────────
     let cadastrandoAgora = false;
 
     onAuthStateChanged(auth, async user => {
@@ -160,6 +184,7 @@
       await signOut(auth); mostrarTela('login');
     });
 
+    // ── TELAS ────────────────────────────────────────────────────────
     function mostrarTela(nome) {
       ['login','cadastro','aguardando','bloqueado'].forEach(t => {
         const el = $(t+'-tela');
@@ -168,22 +193,34 @@
       const appEl  = $('app-tela');
       const formEl = $('form-tela');
       if (appEl) appEl.style.display = 'none';
-      if (nome === 'login')          { $('login-tela').style.display='flex'; }
-      else if (nome==='cadastro')    { $('cadastro-tela').style.display='flex'; }
-      else if (nome==='aguardando')  { $('aguardando-tela').style.display='flex'; }
-      else if (nome==='bloqueado')   { $('bloqueado-tela').style.display='flex'; }
-      else if (nome==='app')  {
+      if (nome === 'login')         { $('login-tela').style.display='flex'; }
+      else if (nome==='cadastro')   { $('cadastro-tela').style.display='flex'; }
+      else if (nome==='aguardando') { $('aguardando-tela').style.display='flex'; }
+      else if (nome==='bloqueado')  { $('bloqueado-tela').style.display='flex'; }
+      else if (nome==='app') {
         appEl.style.display='block';
         if(formEl) formEl.style.display='none';
-        if($('lista-section')) $('lista-section').style.display='block';
+        mostrarSecao(abaSelecionada);
       }
       else if (nome==='form') {
         appEl.style.display='block';
         if(formEl) formEl.style.display='block';
-        if($('lista-section')) $('lista-section').style.display='none';
+        $('lista-section') && ($('lista-section').style.display='none');
+        $('prog-section')  && ($('prog-section').style.display='none');
       }
     }
 
+    function mostrarSecao(aba) {
+      abaSelecionada = aba;
+      $('lista-section') && ($('lista-section').style.display = aba==='hoje' ? 'block' : 'none');
+      $('prog-section')  && ($('prog-section').style.display  = aba==='prog' ? 'block' : 'none');
+      $('form-tela')     && ($('form-tela').style.display     = 'none');
+      // atualiza abas
+      $('tab-hoje') && $('tab-hoje').classList.toggle('tab-ativa', aba==='hoje');
+      $('tab-prog') && $('tab-prog').classList.toggle('tab-ativa', aba==='prog');
+    }
+
+    // ── LOGIN / CADASTRO ─────────────────────────────────────────────
     window.fazerLogin = async () => {
       const email = $('l-email').value.trim();
       const senha = $('l-senha').value;
@@ -235,13 +272,21 @@
     };
     function erroCadastro(msg) { $('erro-cadastro').textContent=msg; $('erro-cadastro').style.display='block'; }
 
+    // ── APP PRINCIPAL ─────────────────────────────────────────────────
     function iniciarApp() {
       $('nome-usuario').textContent = currentPerfil.nome;
       $('tag-op').textContent       = currentPerfil.op;
       $('data-hoje').textContent    = hojeLabel();
       carregarVeiculos();
+      // Inicia programação com amanhã por padrão
+      dataProg = dataFutura(1);
+      renderDatePicker();
+      irAba('hoje');
     }
 
+    window.irAba = (aba) => mostrarSecao(aba);
+
+    // ── ABA HOJE ─────────────────────────────────────────────────────
     function carregarVeiculos() {
       const q = query(
         collection(db,'lancamentos'),
@@ -265,14 +310,14 @@
 
     function renderLista() {
       const lista = $('lista-veiculos');
-      const btnNovo = `<button class="btn-novo" onclick="abrirNovo()">+ Novo lançamento</button>`;
+      const btnNovo = `<button class="btn-novo" onclick="abrirNovo('${hojeISO()}')">+ Novo lançamento</button>`;
       if (!veiculosHoje.length) {
         lista.innerHTML = `<div class="empty">${btnNovo}<div class="empty-icon">🚛</div><p>Nenhum veículo lançado hoje.</p></div>`;
         return;
       }
       lista.innerHTML = btnNovo + veiculosHoje.map(v => {
         const st = calcStatus(v);
-        return `<div class="card status-${st.cor}" onclick="abrirEdicao('${v.fid}')">
+        return `<div class="card status-${st.cor}" onclick="abrirEdicao('${v.fid}','hoje')">
           <div class="card-top">
             <span class="card-placa">${v.VEICULO||'—'}</span>
             <span class="badge badge-${st.cor}">${st.txt}</span>
@@ -290,39 +335,113 @@
       }).join('');
     }
 
+    // ── ABA PROGRAMAÇÃO ───────────────────────────────────────────────
+    function renderDatePicker() {
+      const container = $('date-picker');
+      if (!container) return;
+      // Gera botões: amanhã, +2, +3
+      const opcoes = [0,1,2,3].map(n => {
+        const iso = dataFutura(n);
+        const lbl = n === 0 ? `Hoje ${labelData(iso)}` : labelData(iso);
+        const ativo = iso === dataProg;
+        return `<button class="btn-data${ativo?' btn-data-ativa':''}" onclick="selecionarDataProg('${iso}')">${lbl}</button>`;
+      });
+      container.innerHTML = opcoes.join('');
+    }
+
+    window.selecionarDataProg = (iso) => {
+      dataProg = iso;
+      renderDatePicker();
+      carregarProg();
+    };
+
+    function carregarProg() {
+      if (!dataProg) return;
+      // Cancela listener anterior
+      if (unsubProg) { unsubProg(); unsubProg = null; }
+
+      const q = query(
+        collection(db,'lancamentos'),
+        where('DATA','==', dataProg),
+        where('OP','==', currentPerfil.op)
+      );
+      unsubProg = onSnapshot(q, snap => {
+        veiculosProg = [];
+        snap.forEach(d => veiculosProg.push({fid: d.id, ...d.data()}));
+        renderProgLista();
+      });
+    }
+
+    function renderProgLista() {
+      const lista = $('prog-lista');
+      if (!lista) return;
+      const btnNovo = `<button class="btn-novo" onclick="abrirNovo('${dataProg}')">+ Programar para ${labelData(dataProg)}</button>`;
+      if (!veiculosProg.length) {
+        lista.innerHTML = `<div class="empty">${btnNovo}<div class="empty-icon">📅</div><p>Nenhum lançamento programado para ${labelData(dataProg)}.</p></div>`;
+        return;
+      }
+      lista.innerHTML = btnNovo + veiculosProg.map(v => {
+        return `<div class="card status-cinza" onclick="abrirEdicao('${v.fid}','prog')">
+          <div class="card-top">
+            <span class="card-placa">${v.VEICULO||'—'}</span>
+            <span class="badge badge-cinza" style="background:#4da6ff20;color:#4da6ff">Programado</span>
+          </div>
+          <div class="card-mot">${v.MOTORISTA||'—'}</div>
+          <div class="card-info">
+            ${v.PONTO_ON?`<span>🕐 ${v.PONTO_ON}</span>`:''}
+            ${v.DESTINO?`<span>📍 ${v.DESTINO.substring(0,30)}</span>`:''}
+          </div>
+          <div style="margin-top:8px;text-align:right">
+            <button onclick="event.stopPropagation();apagarLancamento('${v.fid}')" style="background:none;border:1px solid #e8555540;color:#e85555;border-radius:6px;padding:4px 12px;font-size:12px;cursor:pointer">🗑 Apagar</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    // ── FORMULÁRIO ────────────────────────────────────────────────────
     let dadosForm = null;
 
     window.apagarLancamento = async (fid) => {
       if (!confirm('Apagar este lançamento?')) return;
-      const { deleteDoc, doc: dc } = await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js");
       await deleteDoc(doc(db,'lancamentos', fid));
     };
 
-    window.abrirNovo = () => {
-      dadosForm = {DATA: hojeISO(), OP: currentPerfil.op, _novo: true};
+    window.abrirNovo = (data) => {
+      dadosForm = {DATA: data || hojeISO(), OP: currentPerfil.op, _novo: true};
       renderForm();
       mostrarTela('form');
     };
-    window.abrirEdicao = fid => {
-      dadosForm = veiculosHoje.find(v => v.fid === fid);
+
+    window.abrirEdicao = (fid, origem) => {
+      const lista = origem === 'prog' ? veiculosProg : veiculosHoje;
+      dadosForm = lista.find(v => v.fid === fid);
       if (!dadosForm) return;
       renderForm();
       mostrarTela('form');
     };
-    window.voltarLista = () => mostrarTela('app');
+
+    window.voltarListaReal = () => {
+      $('form-tela').style.display = 'none';
+      mostrarSecao(abaSelecionada);
+    };
 
     function renderForm() {
       const d = dadosForm;
+      const isProg = d.DATA !== hojeISO();
       const fEl = $('form-tela');
+      const labelData2 = labelData(d.DATA);
+
       fEl.innerHTML = `
         <div class="form-header">
           <button class="btn-voltar" onclick="voltarListaReal()">← Voltar</button>
           <div>
             <div class="form-veiculo">${d.VEICULO||'Novo Lançamento'}</div>
-            <div class="form-sub">${d.MOTORISTA||''} · ${d.DATA||hojeISO()}</div>
+            <div class="form-sub">${d.MOTORISTA||''} · ${labelData2}${isProg?' 📅 Programado':''}</div>
           </div>
         </div>
         <div class="form-body">
+          ${isProg ? `<div style="background:#4da6ff15;border:1px solid #4da6ff40;border-radius:8px;padding:10px 14px;font-size:13px;color:#4da6ff;margin-bottom:14px">📅 Programação para <strong>${labelData2}</strong> — preencha os dados disponíveis agora e complete no dia da saída.</div>` : ''}
+
           ${d._novo?`<div class="fg"><label>Veículo</label>
           <select id="f-VEICULO">
             <option value="">Selecione o veículo</option>
@@ -420,7 +539,6 @@
             <option${d.MOTORISTA==='EDILEI'?' selected':''}>EDILEI</option>
           </select></div>
 
-          <!-- AVISO DE DISPONIBILIDADE -->
           <div id="aviso-disp" style="display:none;padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:14px;border:1px solid transparent"></div>
 
           ${fg('DESTINO','Destino / Rota','text', d.DESTINO)}
@@ -462,8 +580,6 @@
         const el = $('f-'+id); if(el) el.addEventListener('input', recalc);
       });
       recalc();
-
-      // Se já tem motorista selecionado (edição), mostra disponibilidade
       if (d.MOTORISTA) atualizarDisponibilidade();
     }
 
@@ -485,18 +601,12 @@
       s('c-TLJ', calcTotalLoja(tl1,tl2));
     }
 
-    window.voltarListaReal = () => {
-      $('form-tela').style.display  = 'none';
-      $('lista-section').style.display = 'block';
-    };
-
     const WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbxZxi8vPx1gAoys7W1Poy88BwNf7Zq9tIhmFO6h511kHQhplGPcdkmGdwQ7afqzzcTsCA/exec';
 
     window.salvar = async () => {
       const g = id => { const e=$('f-'+id); return e?e.value.trim():''; };
       const c = id => { const e=$(id); return e?e.textContent:''; };
 
-      // ── VALIDAÇÃO DE DISPONIBILIDADE ───────────────────────────────
       const aviso = $('aviso-disp');
       const proxHora = aviso && aviso.dataset.proxHora;
       const pontoOn  = g('PONTO_ON');
@@ -509,9 +619,10 @@
 
       const tl1 = calcTL(g('ABERTURA_1'),g('SAIDA_1'));
       const tl2 = calcTL(g('ABERTURA_2'),g('SAIDA_2'));
+      const dataLanc = dadosForm.DATA || hojeISO();
 
       const payload = {
-        DATA: dadosForm.DATA||hojeISO(), OP: currentPerfil.op,
+        DATA: dataLanc, OP: currentPerfil.op,
         VEICULO: g('VEICULO')||dadosForm.VEICULO||'',
         MOTORISTA: g('MOTORISTA'), DESTINO: g('DESTINO'),
         PONTO_ON: g('PONTO_ON'), PREVISAO_REFEICAO: c('c-PREV'),
@@ -536,8 +647,10 @@
       btn.disabled=true; btn.textContent='Salvando...';
       try {
         let docId = dadosForm.fid;
-        if (!docId) docId = `${hojeDocId()}_${currentPerfil.op}_${payload.VEICULO.replace(/\s/g,'_')||Date.now()}`;
-        const { setDoc: sd, doc: dc } = await import("https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js");
+        if (!docId) {
+          const prefix = docIdPrefixData(dataLanc);
+          docId = `${prefix}_${currentPerfil.op}_${payload.VEICULO.replace(/\s/g,'_')||Date.now()}`;
+        }
         await setDoc(doc(db,'lancamentos',docId), payload, {merge:true});
         try {
           const params = encodeURIComponent(JSON.stringify(payload));
@@ -587,7 +700,18 @@
     .op-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;background:var(--acc);color:#0f1923}
     .btn-logout{background:none;border:1px solid var(--bord);color:var(--muted);padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px}
     .btn-logout:hover{border-color:var(--danger);color:var(--danger)}
+    /* ABAS */
+    .abas-nav{display:flex;background:var(--surf);border-bottom:1px solid var(--bord);}
+    .tab-btn{flex:1;padding:11px;background:none;border:none;border-bottom:3px solid transparent;color:var(--muted);font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;letter-spacing:1px;cursor:pointer;transition:all .2s}
+    .tab-btn:hover{color:var(--text)}
+    .tab-ativa{color:var(--acc)!important;border-bottom-color:var(--acc)!important}
+    /* DATE PICKER */
+    .date-picker-wrap{padding:14px 20px 0;display:flex;gap:8px;flex-wrap:wrap}
+    .btn-data{padding:8px 16px;background:var(--surf);border:1px solid var(--bord);border-radius:8px;color:var(--muted);font-size:13px;font-family:'Barlow Condensed',sans-serif;font-weight:600;cursor:pointer;transition:all .2s}
+    .btn-data:hover{border-color:var(--acc);color:var(--acc)}
+    .btn-data-ativa{background:#4da6ff20!important;border-color:#4da6ff!important;color:#4da6ff!important}
     #lista-section{padding:20px}
+    #prog-section{padding:20px}
     .dia-label{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
     .btn-novo{display:flex;align-items:center;justify-content:center;width:100%;padding:13px;background:transparent;border:2px dashed var(--bord);border-radius:10px;color:var(--acc);font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:600;cursor:pointer;margin-bottom:16px;transition:all .2s}
     .btn-novo:hover{border-color:var(--acc);background:#f0a50010}
@@ -681,6 +805,7 @@
 </div>
 
 <div id="app-tela">
+  <!-- Topbar -->
   <div class="topbar">
     <div class="topbar-left">
       <div class="topbar-user" id="nome-usuario">—</div>
@@ -691,10 +816,29 @@
     </div>
     <button class="btn-logout" onclick="fazerLogout()">Sair</button>
   </div>
+
+  <!-- Abas de navegação -->
+  <div class="abas-nav">
+    <button id="tab-hoje" class="tab-btn tab-ativa" onclick="irAba('hoje')">🚛 Hoje</button>
+    <button id="tab-prog" class="tab-btn" onclick="irAba('prog');carregarProg()">📅 Programação</button>
+  </div>
+
+  <!-- Aba Hoje -->
   <div id="lista-section">
     <div class="dia-label">Lançamentos do dia</div>
     <div id="lista-veiculos"><div style="text-align:center;padding:40px;color:var(--muted)">Carregando...</div></div>
   </div>
+
+  <!-- Aba Programação -->
+  <div id="prog-section" style="display:none">
+    <div class="dia-label">Programação futura — selecione a data</div>
+    <div class="date-picker-wrap" id="date-picker"></div>
+    <div style="padding:20px 20px 0" id="prog-lista">
+      <div style="text-align:center;padding:40px;color:var(--muted)">Selecione uma data acima</div>
+    </div>
+  </div>
+
+  <!-- Formulário (compartilhado) -->
   <div id="form-tela"></div>
 </div>
 
