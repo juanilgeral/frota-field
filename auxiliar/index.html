@@ -92,42 +92,48 @@
 
     // ── DISPONIBILIDADE DO MOTORISTA ─────────────────────────────────
     // Busca todos os lançamentos do motorista no dia anterior
-    // e calcula PRÓX_HORA_DISP = TOTAL_LOJA + 11h do último lançamento
-    async function buscarDisponibilidade(motorista, dataLancamento) {
+    // Retorna: null (sem registro), {encerrado:false} (ainda em op), {encerrado:true, proxHora}
+    async function buscarSituacaoMotorista(motorista, dataLancamento) {
       if (!motorista) return null;
       try {
-        const ontem = dataLancamento ? diaAnterior(dataLancamento) : ontemISO();
-        const q = query(
-          collection(db, 'lancamentos'),
-          where('MOTORISTA', '==', motorista),
-          where('DATA', '==', ontem)
-        );
-        const snap = await getDocs(q);
-        if (snap.empty) return null;
+        const diaAnt = dataLancamento ? diaAnterior(dataLancamento) : ontemISO();
+        const ehHoje = dataLancamento === hojeISO();
+        const datas  = ehHoje ? [hojeISO(), diaAnt] : [diaAnt];
 
-        // Pega o lançamento com maior TOTAL_LOJA (último serviço)
-        let melhor = null;
-        snap.forEach(d => {
-          const dado = d.data();
-          const tl = dado.TOTAL_LOJA || dado.TOTAL_LOJA_2 || dado.TOTAL_LOJA_1 || '';
-          const poff = dado.PONTO_OFF_MOT || dado.PONTO_OFF_MOTO || '';
-          if (!melhor) { melhor = dado; return; }
-          // Prefere TOTAL_LOJA maior
-          if (tl && toMin(tl) > toMin(melhor.TOTAL_LOJA || '')) melhor = dado;
-          else if (!tl && poff && toMin(poff) > toMin(melhor.PONTO_OFF_MOT || '')) melhor = dado;
-        });
+        for (const dataBusca of datas) {
+          const q = query(
+            collection(db, 'lancamentos'),
+            where('MOTORISTA', '==', motorista),
+            where('DATA', '==', dataBusca)
+          );
+          const snap = await getDocs(q);
+          if (snap.empty) continue;
 
-        if (!melhor) return null;
+          // Verifica se algum lançamento ainda está sem PONTO_OFF (em operação)
+          let emOperacao = false;
+          let melhorPoff = null;
 
-        // Usa TOTAL_LOJA como base, fallback para PONTO_OFF
-        const base = melhor.PONTO_OFF_MOT || melhor.PONTO_OFF_MOTO || melhor.TOTAL_LOJA || '';
-        if (!base) return null;
+          snap.forEach(d => {
+            const dado = d.data();
+            const poff = dado.PONTO_OFF_MOT || dado.PONTO_OFF_MOTO || '';
+            if (!poff) {
+              emOperacao = true; // sem ponto off = ainda em operação
+            } else {
+              if (!melhorPoff || toMin(poff) > toMin(melhorPoff)) melhorPoff = poff;
+            }
+          });
 
-        // PRÓX_HORA_DISP = base + 11h
-        const proxMin = (toMin(base) + 11 * 60) % 1440;
-        return toHM(proxMin);
+          if (emOperacao) return { encerrado: false };
+
+          if (melhorPoff) {
+            const proxMin = (toMin(melhorPoff) + 11 * 60) % 1440;
+            return { encerrado: true, proxHora: toHM(proxMin) };
+          }
+        }
+
+        return null; // nenhum lançamento encontrado
       } catch(e) {
-        console.warn('Erro ao buscar disponibilidade:', e);
+        console.warn('Erro ao buscar situação motorista:', e);
         return null;
       }
     }
@@ -144,19 +150,29 @@
       aviso.style.background = '#ffffff10';
       aviso.style.color = 'var(--muted)';
       aviso.textContent = '⏳ Verificando disponibilidade...';
+      delete aviso.dataset.proxHora;
+      delete aviso.dataset.bloqueado;
 
       const dataRef = dadosForm ? dadosForm.DATA : hojeISO();
-      const proxHora = await buscarDisponibilidade(motorista, dataRef);
-      if (!proxHora) {
+      const resultado = await buscarSituacaoMotorista(motorista, dataRef);
+
+      if (!resultado) {
+        // Sem lançamento no dia anterior — disponível
         aviso.style.background = '#00c9a715';
         aviso.style.color = 'var(--acc2)';
-        aviso.textContent = '✅ Sem registro ontem — disponível';
+        aviso.textContent = '✅ Sem registro no dia anterior — disponível';
+      } else if (!resultado.encerrado) {
+        // Tem lançamento mas sem PONTO_OFF — ainda em operação
+        aviso.style.background = '#e8555520';
+        aviso.style.color = 'var(--danger)';
+        aviso.textContent = '🚫 Motorista ainda em operação — turno não encerrado';
+        aviso.dataset.bloqueado = 'true';
       } else {
+        // Encerrado — mostra próxima disponibilidade
         aviso.style.background = '#f0a50015';
         aviso.style.color = 'var(--acc)';
-        aviso.textContent = `⏰ Próxima disponibilidade: ${proxHora}`;
-        // Guarda horário para validação ao salvar
-        aviso.dataset.proxHora = proxHora;
+        aviso.textContent = `⏰ Próxima disponibilidade: ${resultado.proxHora}`;
+        aviso.dataset.proxHora = resultado.proxHora;
       }
     }
 
@@ -583,7 +599,13 @@
       // ── VALIDAÇÃO DE DISPONIBILIDADE ───────────────────────────────
       const aviso = $('aviso-disp');
       const proxHora = aviso && aviso.dataset.proxHora;
+      const bloqueado = aviso && aviso.dataset.bloqueado;
       const pontoOn  = g('PONTO_ON');
+
+      if (bloqueado) {
+        alert('🚫 Motorista ainda em operação — turno não encerrado. Aguarde o fechamento do turno para escalar.');
+        return;
+      }
       if (proxHora && pontoOn) {
         if (toMin(pontoOn) < toMin(proxHora)) {
           alert(`⚠️ Motorista indisponível até ${proxHora}.\nO Ponto ON informado (${pontoOn}) é anterior à próxima disponibilidade.`);
