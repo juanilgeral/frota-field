@@ -820,7 +820,7 @@
   <!-- Abas de navegação -->
   <div class="abas-nav">
     <button id="tab-hoje" class="tab-btn tab-ativa" onclick="irAba('hoje')">🚛 Hoje</button>
-    <button id="tab-prog" class="tab-btn" onclick="irAba('prog');carregarProg()">📅 Programação</button>
+    <button id="tab-prog" class="tab-btn" onclick="dataProg=dataFutura(1);irAba('prog');renderDatePicker();carregarProg()">📅 Programação</button>
   </div>
 
   <!-- Aba Hoje -->
