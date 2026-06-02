@@ -279,10 +279,12 @@
       $('tag-op').textContent       = currentPerfil.op;
       $('data-hoje').textContent    = hojeLabel();
       carregarVeiculos();
-      // Inicia programação com amanhã por padrão
       dataProg = dataFutura(1);
-      renderDatePicker();
-      irAba('hoje');
+      // Mostra aba hoje diretamente sem chamar mostrarSecao
+      $('lista-section') && ($('lista-section').style.display = 'block');
+      $('prog-section')  && ($('prog-section').style.display  = 'none');
+      $('tab-hoje') && $('tab-hoje').classList.add('tab-ativa');
+      $('tab-prog') && $('tab-prog').classList.remove('tab-ativa');
     }
 
     window.irAba = (aba) => mostrarSecao(aba);
