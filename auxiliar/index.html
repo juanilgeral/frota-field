@@ -200,7 +200,8 @@
       else if (nome==='app') {
         appEl.style.display='block';
         if(formEl) formEl.style.display='none';
-        mostrarSecao(abaSelecionada);
+        if($('lista-section')) $('lista-section').style.display = abaSelecionada==='hoje' ? 'block' : 'none';
+        if($('prog-section'))  $('prog-section').style.display  = abaSelecionada==='prog' ? 'block' : 'none';
       }
       else if (nome==='form') {
         appEl.style.display='block';
