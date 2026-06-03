@@ -153,6 +153,9 @@
       }
     }
 
+    window.mostrarLegenda = () => { document.getElementById('legenda-overlay').style.display='flex'; };
+    window.fecharLegenda  = () => { document.getElementById('legenda-overlay').style.display='none'; };
+
     // ── AUTH ─────────────────────────────────────────────────────────
     let authResolvido = false;
 
@@ -539,8 +542,6 @@
     };
 
 
-    window.mostrarLegenda = () => { document.getElementById('legenda-overlay').style.display='flex'; };
-    window.fecharLegenda  = () => { document.getElementById('legenda-overlay').style.display='none'; };
     window.fecharDetalhe = () => { $('overlay').style.display='none'; };
 
     // ── PAINEL DE USUÁRIOS ────────────────────────────────────────────
