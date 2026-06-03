@@ -127,7 +127,7 @@
       const tbody = $('tbody');
       $('cnt-label').textContent = `${lista.length} veículo${lista.length!==1?'s':''}`;
       if (!lista.length) {
-        tbody.innerHTML = `<tr><td colspan="7" class="empty-row">Nenhum veículo em operação hoje.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="empty-row">Nenhum veículo em operação hoje.</td></tr>`;
         return;
       }
       tbody.innerHTML = lista.map(v => {
@@ -135,6 +135,7 @@
         return `<tr class="tr-data" onclick="abrirDetalhe('${v.fid}','hoje')">
           <td class="col-placa">${v.VEICULO||'—'}</td>
           <td>${v.MOTORISTA||'—'}</td>
+          <td style="font-size:12px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.DESTINO||'—'}</td>
           <td class="mono">${v.PONTO_ON||'—'}</td>
           <td class="mono">${v.SAIDA_VEICULO_CD||'—'}</td>
           <td class="mono">${v.CHEGADA_VEICULO_CD||'—'}</td>
@@ -184,6 +185,7 @@
         return `<tr class="tr-data" onclick="abrirDetalhe('${v.fid}','prog')">
           <td class="col-placa">${v.VEICULO||'—'}</td>
           <td>${v.MOTORISTA||'—'}</td>
+          <td style="font-size:12px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.DESTINO||'—'}</td>
           <td class="mono">${v.PONTO_ON||'—'}</td>
           <td class="mono">${v.SAIDA_VEICULO_CD||'—'}</td>
           <td class="mono">${v.CHEGADA_VEICULO_CD||'—'}</td>
@@ -328,9 +330,9 @@
     <div class="cnt-label" id="cnt-label">—</div>
     <table>
       <thead>
-        <tr><th>Veículo</th><th>Motorista</th><th>Ponto ON</th><th>Saída CD</th><th>Chegada CD</th><th>KM</th><th>Status</th></tr>
+        <tr><th>Veículo</th><th>Motorista</th><th>Destino</th><th>Ponto ON</th><th>Saída CD</th><th>Chegada CD</th><th>KM</th><th>Status</th></tr>
       </thead>
-      <tbody id="tbody"><tr><td colspan="7" class="empty-row">Carregando...</td></tr></tbody>
+      <tbody id="tbody"><tr><td colspan="8" class="empty-row">Carregando...</td></tr></tbody>
     </table>
   </div>
 </div>
