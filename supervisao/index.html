@@ -448,7 +448,6 @@
         ${fgs('SAIDA_VEICULO_CD','Saída Veículo CD','time', v.SAIDA_VEICULO_CD)}
         ${fgs('SM','SM','text', v.SM)}
         ${fgs('DATA_CARRG','Data Carregamento','date', v.DATA_CARRG)}
-        ${fgs('ALMOCO','Almoço (duração)','time', v.ALMOCO)}
         ${fgs('KM_SAIDA','KM Saída','number', v.KM_SAIDA)}
         ${fgs('LOJA_1','Prev. Chegada 1ª Loja','time', v.LOJA_1)}
         ${fgs('ABERTURA_1','Abertura 1ª Loja','time', v.ABERTURA_1)}
@@ -480,20 +479,22 @@
       const g = id => { const e=document.getElementById('sf-'+id); return e?e.value.trim():''; };
       const v = dadosDetalheSup;
 
-      // Validação de disponibilidade
+      // Validação de disponibilidade (só para novos lançamentos)
       const aviso = document.getElementById('aviso-disp-sup');
       const proxHora = aviso && aviso.dataset.proxHora;
       const bloqueado = aviso && aviso.dataset.bloqueado;
       const pontoOn = g('PONTO_ON');
 
-      if (bloqueado) {
-        alert('🚫 Motorista ainda em operação — turno não encerrado.');
-        return;
-      }
-      if (proxHora && pontoOn) {
-        if (toMin(pontoOn) < toMin(proxHora)) {
-          alert(`⚠️ Motorista indisponível até ${proxHora}.\nO Ponto ON (${pontoOn}) é anterior à próxima disponibilidade.`);
+      if (v._novo) {
+        if (bloqueado) {
+          alert('🚫 Motorista ainda em operação — turno não encerrado.');
           return;
+        }
+        if (proxHora && pontoOn) {
+          if (toMin(pontoOn) < toMin(proxHora)) {
+            alert(`⚠️ Motorista indisponível até ${proxHora}.\nO Ponto ON (${pontoOn}) é anterior à próxima disponibilidade.`);
+            return;
+          }
         }
       }
 
