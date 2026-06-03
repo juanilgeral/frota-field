@@ -112,10 +112,18 @@
 
     // ── DASHBOARD ─────────────────────────────────────────────────────
     function calcStatus(v) {
+      const agora  = new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Sao_Paulo'}));
+      const hMin   = agora.getHours()*60 + agora.getMinutes();
+      const tMin   = t => { if(!t) return null; const [h,m]=t.split(':').map(Number); return h*60+m; };
+      const isHoje = !v.DATA || v.DATA === hojeISO();
+
       if (v.CHEGADA_VEICULO_CD && v.KM_CHEGADA) return {key:'concluido', label:'Concluído',   cor:'#34d399'};
       if (v.SAIDA_1 || v.ABERTURA_1)            return {key:'rota',      label:'Em rota',     cor:'#fbbf24'};
-      if (v.SAIDA_VEICULO_CD)                   return {key:'transito',  label:'Em trânsito', cor:'#f97316'};
-      if (v.PONTO_ON && v.DESTINO)              return {key:'transito',  label:'Em trânsito', cor:'#f97316'};
+
+      // Em trânsito: só se for hoje E hora da saída já passou
+      const saidaMin = tMin(v.SAIDA_VEICULO_CD);
+      if (isHoje && saidaMin !== null && hMin >= saidaMin) return {key:'transito', label:'Em trânsito', cor:'#f97316'};
+
       if (v.PONTO_ON)                           return {key:'iniciado',  label:'Iniciado',    cor:'#4da6ff'};
       return                                           {key:'pendente',  label:'Pendente',    cor:'#6b8099'};
     }
