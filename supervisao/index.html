@@ -11,7 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@300;400;500&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
   <script type="module">
     import { initializeApp }   from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
-    import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
+    import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, browserLocalPersistence, setPersistence }
                                from "https://www.gstatic.com/firebasejs/11.8.1/firebase-auth.js";
     import { getFirestore, collection, doc, getDoc, setDoc, updateDoc, deleteDoc,
              query, where, onSnapshot, getDocs, serverTimestamp }
@@ -31,6 +31,9 @@
     const app  = initializeApp(FIREBASE_CONFIG);
     const auth = getAuth(app);
     const db   = getFirestore(app);
+
+    // Força persistência via localStorage para evitar logout em desktop
+    setPersistence(auth, browserLocalPersistence).catch(console.error);
 
     let currentUser   = null;
     let todosLanc     = [];
