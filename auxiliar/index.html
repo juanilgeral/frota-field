@@ -393,6 +393,7 @@
             ${v.KM_SAIDA?`<span>📍 ${v.KM_SAIDA} km</span>`:''}
             ${v.CHEGADA_VEICULO_CD?`<span>🏁 ${v.CHEGADA_VEICULO_CD}</span>`:''}
           </div>
+          ${v.DESTINO?`<div style="font-size:11px;color:var(--muted);margin-top:4px">📍 ${v.DESTINO}</div>`:''}
           <div style="margin-top:8px;text-align:right">
             <button onclick="event.stopPropagation();apagarLancamento('${v.fid}')" style="background:none;border:1px solid #e8555540;color:#e85555;border-radius:6px;padding:4px 12px;font-size:12px;cursor:pointer">🗑 Apagar</button>
           </div>
