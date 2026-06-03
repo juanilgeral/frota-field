@@ -467,7 +467,7 @@
         ${fgs('DATA_CHEGADA','Data Chegada','date', v.DATA_CHEGADA)}
         ${fgs('KM_CHEGADA','KM Chegada','number', v.KM_CHEGADA)}
         ${fgs('OBSERVACOES','Observações','textarea', v.OBSERVACOES)}
-        <button onclick="salvarSup()" style="width:100%;margin-top:16px;padding:14px;background:#f0a500;color:#080f18;border:none;border-radius:8px;font-size:16px;font-weight:700;cursor:pointer">💾 Salvar</button>
+        <button id="btn-salvar-sup" onclick="salvarSup()" style="width:100%;margin-top:16px;padding:14px;background:#f0a500;color:#080f18;border:none;border-radius:8px;font-size:16px;font-weight:700;cursor:pointer">💾 Salvar</button>
         <div id="msg-ok-sup" style="display:none;margin-top:10px;padding:10px;background:#00c9a720;border:1px solid #00c9a7;border-radius:8px;color:#00c9a7;text-align:center">✅ Salvo!</div>
         <button onclick="apagarLancamentoSup('${v.fid}')" style="width:100%;margin-top:10px;padding:10px;background:none;border:1px solid #e8555560;color:#e85555;border-radius:8px;cursor:pointer;font-size:13px${!v.fid?';display:none':''}">🗑 Apagar lançamento</button>
       `;
@@ -479,6 +479,9 @@
     }
 
     window.salvarSup = async () => {
+      const btnSalvar = document.getElementById('btn-salvar-sup');
+      if (btnSalvar) { btnSalvar.disabled=true; btnSalvar.textContent='Salvando...'; }
+
       const g = id => { const e=document.getElementById('sf-'+id); return e?e.value.trim():''; };
       const v = dadosDetalheSup;
 
@@ -538,7 +541,11 @@
         await fetch(WEBHOOK_URL_SUP + '?dados=' + params, {method:'GET', mode:'no-cors'});
         const msg = document.getElementById('msg-ok-sup');
         if(msg){ msg.style.display='block'; setTimeout(()=>{ msg.style.display='none'; },2500); }
-      } catch(e) { alert('Erro: '+e.message); }
+        if (btnSalvar) { btnSalvar.disabled=false; btnSalvar.textContent='💾 Salvar'; }
+      } catch(e) { 
+        alert('Erro: '+e.message); 
+        if (btnSalvar) { btnSalvar.disabled=false; btnSalvar.textContent='💾 Salvar'; }
+      }
     };
 
 
