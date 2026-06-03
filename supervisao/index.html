@@ -151,12 +151,24 @@
     }
 
     // ── AUTH ─────────────────────────────────────────────────────────
+    let authResolvido = false;
+
     onAuthStateChanged(auth, user => {
       if (user) {
+        authResolvido = true;
         if (!SUPERVISORES.includes(user.email)) { signOut(auth); erroLogin('Acesso não autorizado.'); return; }
         currentUser = user;
         mostrarDashboard();
-      } else { mostrarLogin(); }
+      } else {
+        // Aguarda 1.5s antes de redirecionar — Firebase pode demorar a restaurar a sessão
+        if (authResolvido) {
+          mostrarLogin();
+        } else {
+          setTimeout(() => {
+            if (!authResolvido) mostrarLogin();
+          }, 1500);
+        }
+      }
     });
 
     window.fazerLogin = async () => {
