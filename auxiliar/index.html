@@ -353,10 +353,18 @@
     }
 
     function calcStatus(v) {
+      const agora  = new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Sao_Paulo'}));
+      const hMin   = agora.getHours()*60 + agora.getMinutes();
+      const tMin   = t => { if(!t) return null; const [h,m]=t.split(':').map(Number); return h*60+m; };
+      const isHoje = !v.DATA || v.DATA === hojeISO();
+
       if (v.CHEGADA_VEICULO_CD && v.KM_CHEGADA) return {cor:'verde',  txt:'Concluído'   };
       if (v.SAIDA_1 || v.ABERTURA_1)            return {cor:'amarelo', txt:'Em rota'     };
-      if (v.SAIDA_VEICULO_CD)                   return {cor:'laranja', txt:'Em trânsito' };
-      if (v.PONTO_ON && v.DESTINO)              return {cor:'laranja', txt:'Em trânsito' };
+
+      // Em trânsito: só se for hoje E hora da saída já passou
+      const saidaMin = tMin(v.SAIDA_VEICULO_CD);
+      if (isHoje && saidaMin !== null && hMin >= saidaMin) return {cor:'laranja', txt:'Em trânsito'};
+
       if (v.PONTO_ON)                           return {cor:'azul',    txt:'Iniciado'    };
       return                                           {cor:'cinza',   txt:'Pendente'    };
     }
