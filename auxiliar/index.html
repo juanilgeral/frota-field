@@ -356,6 +356,7 @@
       if (v.CHEGADA_VEICULO_CD && v.KM_CHEGADA) return {cor:'verde',  txt:'Concluído'   };
       if (v.SAIDA_1 || v.ABERTURA_1)            return {cor:'amarelo', txt:'Em rota'     };
       if (v.SAIDA_VEICULO_CD)                   return {cor:'laranja', txt:'Em trânsito' };
+      if (v.PONTO_ON && v.DESTINO)              return {cor:'laranja', txt:'Em trânsito' };
       if (v.PONTO_ON)                           return {cor:'azul',    txt:'Iniciado'    };
       return                                           {cor:'cinza',   txt:'Pendente'    };
     }
