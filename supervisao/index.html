@@ -538,6 +538,9 @@
       } catch(e) { alert('Erro: '+e.message); }
     };
 
+
+    window.mostrarLegenda = () => { document.getElementById('legenda-overlay').style.display='flex'; };
+    window.fecharLegenda  = () => { document.getElementById('legenda-overlay').style.display='none'; };
     window.fecharDetalhe = () => { $('overlay').style.display='none'; };
 
     // ── PAINEL DE USUÁRIOS ────────────────────────────────────────────
@@ -716,6 +719,7 @@
     <div class="brand">FROTA <span>Supervisão · <span id="sup-nome"></span></span></div>
     <div class="topbar-r">
       <span id="relogio">00:00</span>
+      <button onclick="mostrarLegenda()" style="background:none;border:1px solid var(--bord);color:var(--muted);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px;margin-right:6px">?</button>
       <button class="btn-logout" onclick="fazerLogout()">Sair</button>
     </div>
   </div>
@@ -785,6 +789,23 @@
       <button class="btn-fechar" onclick="fecharDetalhe()">✕ Fechar</button>
     </div>
     <div id="det-campos"></div>
+  </div>
+</div>
+
+<!-- LEGENDA MODAL -->
+<div id="legenda-overlay" onclick="if(event.target===this)fecharLegenda()" style="display:none;position:fixed;inset:0;background:#000a;z-index:500;align-items:center;justify-content:center">
+  <div style="background:#0e1a28;border:1px solid #1b2e42;border-radius:16px;padding:28px;width:90%;max-width:400px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:20px;color:#dde6ef">📋 Legenda de Status</span>
+      <button onclick="fecharLegenda()" style="background:none;border:1px solid #1b2e42;color:#5a7a99;padding:6px 12px;border-radius:6px;cursor:pointer">✕</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:center;gap:12px"><span style="width:12px;height:12px;border-radius:50%;background:#6b8099;flex-shrink:0"></span><div><strong style="color:#dde6ef">Pendente</strong><div style="font-size:12px;color:#5a7a99">Lançamento programado — horário de saída ainda não chegou</div></div></div>
+      <div style="display:flex;align-items:center;gap:12px"><span style="width:12px;height:12px;border-radius:50%;background:#4da6ff;flex-shrink:0"></span><div><strong style="color:#dde6ef">Iniciado</strong><div style="font-size:12px;color:#5a7a99">Motorista bateu o ponto — ainda no CD aguardando saída</div></div></div>
+      <div style="display:flex;align-items:center;gap:12px"><span style="width:12px;height:12px;border-radius:50%;background:#f97316;flex-shrink:0"></span><div><strong style="color:#dde6ef">Em trânsito</strong><div style="font-size:12px;color:#5a7a99">Veículo saiu do CD e está a caminho da loja</div></div></div>
+      <div style="display:flex;align-items:center;gap:12px"><span style="width:12px;height:12px;border-radius:50%;background:#fbbf24;flex-shrink:0"></span><div><strong style="color:#dde6ef">Em rota</strong><div style="font-size:12px;color:#5a7a99">Veículo está na loja realizando a entrega</div></div></div>
+      <div style="display:flex;align-items:center;gap:12px"><span style="width:12px;height:12px;border-radius:50%;background:#34d399;flex-shrink:0"></span><div><strong style="color:#dde6ef">Concluído</strong><div style="font-size:12px;color:#5a7a99">Veículo retornou ao CD e KM registrado</div></div></div>
+    </div>
   </div>
 </div>
 </body>
