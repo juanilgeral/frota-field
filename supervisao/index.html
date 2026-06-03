@@ -308,6 +308,7 @@
           <td><span class="op-pill" style="background:${cor}20;color:${cor}">${v.OP||'—'}</span></td>
           <td class="col-placa">${v.VEICULO||'—'}</td>
           <td>${v.MOTORISTA||'—'}</td>
+          <td style="font-size:12px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.DESTINO||'—'}</td>
           <td class="mono">${v.PONTO_ON||'—'}</td>
           <td class="mono">${v.SAIDA_VEICULO_CD||'—'}</td>
           <td class="mono">${v.CHEGADA_VEICULO_CD||'—'}</td>
@@ -361,6 +362,7 @@
           <td><span class="op-pill" style="background:${cor}20;color:${cor}">${v.OP||'—'}</span></td>
           <td class="col-placa">${v.VEICULO||'—'}</td>
           <td>${v.MOTORISTA||'—'}</td>
+          <td style="font-size:12px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.DESTINO||'—'}</td>
           <td class="mono">${v.PONTO_ON||'—'}</td>
           <td class="mono">${v.SAIDA_VEICULO_CD||'—'}</td>
           <td class="mono">—</td>
@@ -380,6 +382,7 @@
           <td><span class="op-pill" style="background:${cor}20;color:${cor}">${v.OP||'—'}</span></td>
           <td class="col-placa">${v.VEICULO||'—'}</td>
           <td>${v.MOTORISTA||'—'}</td>
+          <td style="font-size:12px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.DESTINO||'—'}</td>
           <td class="mono">${v.PONTO_ON||'—'}</td>
           <td class="mono">${v.SAIDA_VEICULO_CD||'—'}</td>
           <td class="mono">—</td><td class="mono">—</td>
@@ -753,7 +756,7 @@
       <div class="cnt-label" id="cnt-label">—</div>
       <table>
         <thead>
-          <tr><th>OP</th><th>Veículo</th><th>Motorista</th><th>Ponto ON</th><th>Saída CD</th><th>Chegada CD</th><th>KM</th><th>Status</th></tr>
+          <tr><th>OP</th><th>Veículo</th><th>Motorista</th><th>Destino</th><th>Ponto ON</th><th>Saída CD</th><th>Chegada CD</th><th>KM</th><th>Status</th></tr>
         </thead>
         <tbody id="tbody"><tr><td colspan="8" class="empty-row">Aguardando lançamentos...</td></tr></tbody>
       </table>
