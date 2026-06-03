@@ -115,6 +115,7 @@
       if (v.CHEGADA_VEICULO_CD && v.KM_CHEGADA) return {key:'concluido', label:'Concluído',   cor:'#34d399'};
       if (v.SAIDA_1 || v.ABERTURA_1)            return {key:'rota',      label:'Em rota',     cor:'#fbbf24'};
       if (v.SAIDA_VEICULO_CD)                   return {key:'transito',  label:'Em trânsito', cor:'#f97316'};
+      if (v.PONTO_ON && v.DESTINO)              return {key:'transito',  label:'Em trânsito', cor:'#f97316'};
       if (v.PONTO_ON)                           return {key:'iniciado',  label:'Iniciado',    cor:'#4da6ff'};
       return                                           {key:'pendente',  label:'Pendente',    cor:'#6b8099'};
     }
