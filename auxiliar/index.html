@@ -610,20 +610,22 @@
       const g = id => { const e=$('f-'+id); return e?e.value.trim():''; };
       const c = id => { const e=$(id); return e?e.textContent:''; };
 
-      // ── VALIDAÇÃO DE DISPONIBILIDADE ───────────────────────────────
+      // ── VALIDAÇÃO DE DISPONIBILIDADE (só para novos lançamentos) ───
       const aviso = $('aviso-disp');
       const proxHora = aviso && aviso.dataset.proxHora;
       const bloqueado = aviso && aviso.dataset.bloqueado;
       const pontoOn  = g('PONTO_ON');
 
-      if (bloqueado) {
-        alert('🚫 Motorista ainda em operação — turno não encerrado. Aguarde o fechamento do turno para escalar.');
-        return;
-      }
-      if (proxHora && pontoOn) {
-        if (toMin(pontoOn) < toMin(proxHora)) {
-          alert(`⚠️ Motorista indisponível até ${proxHora}.\nO Ponto ON informado (${pontoOn}) é anterior à próxima disponibilidade.`);
+      if (dadosForm._novo) {
+        if (bloqueado) {
+          alert('🚫 Motorista ainda em operação — turno não encerrado. Aguarde o fechamento do turno para escalar.');
           return;
+        }
+        if (proxHora && pontoOn) {
+          if (toMin(pontoOn) < toMin(proxHora)) {
+            alert(`⚠️ Motorista indisponível até ${proxHora}.\nO Ponto ON informado (${pontoOn}) é anterior à próxima disponibilidade.`);
+            return;
+          }
         }
       }
 
