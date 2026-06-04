@@ -90,9 +90,6 @@
     const calcTL         = (ab,sa) => ab&&sa ? toHM(Math.max(0,toMin(sa)-toMin(ab))) : '';
     const calcTotalLoja  = (t1,t2) => { const a=toMin(t1),b=toMin(t2); return (a||b)?toHM(a+b):''; };
 
-    // ── DISPONIBILIDADE DO MOTORISTA ─────────────────────────────────
-    // Busca todos os lançamentos do motorista no dia anterior
-    // Retorna: null (sem registro), {encerrado:false} (ainda em op), {encerrado:true, proxHora}
     async function buscarSituacaoMotorista(motorista, dataLancamento) {
       if (!motorista) return null;
       try {
@@ -109,7 +106,6 @@
           const snap = await getDocs(q);
           if (snap.empty) continue;
 
-          // Verifica se algum lançamento ainda está sem PONTO_OFF (em operação)
           let emOperacao = false;
           let melhorPoff = null;
 
@@ -117,7 +113,7 @@
             const dado = d.data();
             const poff = dado.PONTO_OFF_MOT || dado.PONTO_OFF_MOTO || '';
             if (!poff) {
-              emOperacao = true; // sem ponto off = ainda em operação
+              emOperacao = true;
             } else {
               if (!melhorPoff || toMin(poff) > toMin(melhorPoff)) melhorPoff = poff;
             }
@@ -131,14 +127,13 @@
           }
         }
 
-        return null; // nenhum lançamento encontrado
+        return null;
       } catch(e) {
         console.warn('Erro ao buscar situação motorista:', e);
         return null;
       }
     }
 
-    // Mostra ou esconde o aviso de disponibilidade
     async function atualizarDisponibilidade() {
       const sel = $('f-MOTORISTA');
       const aviso = $('aviso-disp');
@@ -157,18 +152,15 @@
       const resultado = await buscarSituacaoMotorista(motorista, dataRef);
 
       if (!resultado) {
-        // Sem lançamento no dia anterior — disponível
         aviso.style.background = '#00c9a715';
         aviso.style.color = 'var(--acc2)';
         aviso.textContent = '✅ Sem registro no dia anterior — disponível';
       } else if (!resultado.encerrado) {
-        // Tem lançamento mas sem PONTO_OFF — ainda em operação
         aviso.style.background = '#e8555520';
         aviso.style.color = 'var(--danger)';
         aviso.textContent = '🚫 Motorista ainda em operação — turno não encerrado';
         aviso.dataset.bloqueado = 'true';
       } else {
-        // Encerrado — mostra próxima disponibilidade
         aviso.style.background = '#f0a50015';
         aviso.style.color = 'var(--acc)';
         aviso.textContent = `⏰ Próxima disponibilidade: ${resultado.proxHora}`;
@@ -324,12 +316,11 @@
 
     function renderProgLista() {
       const lista = $('prog-lista'); if(!lista) return;
-      const btnNovo = `<button class="btn-novo" onclick="abrirNovo('${dataProg}')">+ Programar para ${labelData(dataProg)}</button>`;
       if (!veiculosProg.length) {
-        lista.innerHTML = `<div class="empty">${btnNovo}<div class="empty-icon">📅</div><p>Nenhum lançamento para ${labelData(dataProg)}.</p></div>`;
+        lista.innerHTML = `<div class="empty"><div class="empty-icon">📅</div><p>Nenhum lançamento para ${labelData(dataProg)}.</p></div>`;
         return;
       }
-      lista.innerHTML = btnNovo + veiculosProg.map(v =>
+      lista.innerHTML = veiculosProg.map(v =>
         `<div class="card status-cinza" onclick="abrirEdicao('${v.fid}','prog')">
           <div class="card-top"><span class="card-placa">${v.VEICULO||'—'}</span><span class="badge" style="background:#4da6ff20;color:#4da6ff">Programado</span></div>
           <div class="card-mot">${v.MOTORISTA||'—'}</div>
@@ -361,26 +352,22 @@
       if (v.CHEGADA_VEICULO_CD && v.KM_CHEGADA) return {cor:'verde',  txt:'Concluído'   };
       if (v.SAIDA_1 || v.ABERTURA_1)            return {cor:'amarelo', txt:'Em rota'     };
 
-      // Em trânsito: só se for hoje E hora da saída já passou
       const saidaMin = tMin(v.SAIDA_VEICULO_CD);
       if (isHoje && saidaMin !== null && hMin >= saidaMin) return {cor:'laranja', txt:'Em trânsito'};
 
-      // Iniciado: só se for hoje E hora do ponto ON já passou
       const pontoOnMin = tMin(v.PONTO_ON);
       if (isHoje && pontoOnMin !== null && hMin >= pontoOnMin) return {cor:'azul', txt:'Iniciado'};
 
-      // Data futura ou hora ainda não chegou = pendente
       return {cor:'cinza', txt:'Pendente'};
     }
 
     function renderLista() {
       const lista = $('lista-veiculos');
-      const btnNovo = `<button class="btn-novo" onclick="abrirNovo()">+ Novo lançamento</button>`;
       if (!veiculosHoje.length) {
-        lista.innerHTML = `<div class="empty">${btnNovo}<div class="empty-icon">🚛</div><p>Nenhum veículo lançado hoje.</p></div>`;
+        lista.innerHTML = `<div class="empty"><div class="empty-icon">🚛</div><p>Nenhum veículo lançado hoje.</p></div>`;
         return;
       }
-      lista.innerHTML = btnNovo + veiculosHoje.map(v => {
+      lista.innerHTML = veiculosHoje.map(v => {
         const st = calcStatus(v);
         return `<div class="card status-${st.cor}" onclick="abrirEdicao('${v.fid}')">
           <div class="card-top">
@@ -394,9 +381,6 @@
             ${v.CHEGADA_VEICULO_CD?`<span>🏁 ${v.CHEGADA_VEICULO_CD}</span>`:''}
           </div>
           ${v.DESTINO?`<div style="font-size:11px;color:var(--muted);margin-top:4px">📍 ${v.DESTINO}</div>`:''}
-          <div style="margin-top:8px;text-align:right">
-            <button onclick="event.stopPropagation();apagarLancamento('${v.fid}')" style="background:none;border:1px solid #e8555540;color:#e85555;border-radius:6px;padding:4px 12px;font-size:12px;cursor:pointer">🗑 Apagar</button>
-          </div>
         </div>`;
       }).join('');
     }
@@ -408,11 +392,9 @@
       await deleteDoc(doc(db,'lancamentos', fid));
     };
 
-    window.abrirNovo = (data) => {
-      dadosForm = {DATA: data||hojeISO(), OP: currentPerfil.op, _novo: true};
-      renderForm();
-      mostrarTela('form');
-    };
+    // DESABILITADO — novo lançamento só via planilha
+    window.abrirNovo = (data) => { return; };
+
     window.abrirEdicao = (fid, origem) => {
       const lista = origem==='prog' ? veiculosProg : veiculosHoje;
       dadosForm = lista.find(v => v.fid===fid);
@@ -436,54 +418,7 @@
         </div>
         <div class="form-body">
           ${isProg?`<div style="background:#4da6ff15;border:1px solid #4da6ff40;border-radius:8px;padding:10px 14px;font-size:13px;color:#4da6ff;margin-bottom:14px">📅 Programação para <strong>${labelData(d.DATA)}</strong></div>`:''}
-          ${d._novo?`<div class="fg"><label>Veículo</label>
-          <select id="f-VEICULO">
-            <option value="">Selecione o veículo</option>
-            <option value="063 LBW 8156">063 LBW 8156</option>
-            <option value="064 LUV 9296">064 LUV 9296</option>
-            <option value="065 KZQ 9648">065 KZQ 9648</option>
-            <option value="066 LUB 1400">066 LUB 1400</option>
-            <option value="067 LUX 9063">067 LUX 9063</option>
-            <option value="068 LSN 1702">068 LSN 1702</option>
-            <option value="074 LKK 6551">074 LKK 6551</option>
-            <option value="075 KUT 8573">075 KUT 8573</option>
-            <option value="088 KYP 3601">088 KYP 3601</option>
-            <option value="091 KPE 2252">091 KPE 2252</option>
-            <option value="092 LSF 4199">092 LSF 4199</option>
-            <option value="093 KVF 3715">093 KVF 3715</option>
-            <option value="094 KQT 1919">094 KQT 1919</option>
-            <option value="095 LTJ 4440">095 LTJ 4440</option>
-            <option value="096 KQS 2672">096 KQS 2672</option>
-            <option value="097 LRX 4831">097 LRX 4831</option>
-            <option value="098 LRX 4828">098 LRX 4828</option>
-            <option value="099 LRX 4830">099 LRX 4830</option>
-            <option value="100 LRX 4829">100 LRX 4829</option>
-            <option value="101 LRX 4832">101 LRX 4832</option>
-            <option value="102 LRT 4821">102 LRT 4821</option>
-            <option value="103 KWB 9779">103 KWB 9779</option>
-            <option value="104 LRC 3089">104 LRC 3089</option>
-            <option value="105 KPU 7450">105 KPU 7450</option>
-            <option value="106 LSZ 5959">106 LSZ 5959</option>
-            <option value="107 LRR 8757">107 LRR 8757</option>
-            <option value="108 LSM 7748">108 LSM 7748</option>
-            <option value="109 LSM 7749">109 LSM 7749</option>
-            <option value="110 LSM 7750">110 LSM 7750</option>
-            <option value="111 KRO 8527">111 KRO 8527</option>
-            <option value="112 KRO 8528">112 KRO 8528</option>
-            <option value="113 KXU 6988">113 KXU 6988</option>
-            <option value="114 KXU 6989">114 KXU 6989</option>
-            <option value="115 KXW 7716">115 KXW 7716</option>
-            <option value="116 LSQ 6092">116 LSQ 6092</option>
-            <option value="117 KRR 2728">117 KRR 2728</option>
-            <option value="118 LSQ 6093">118 LSQ 6093</option>
-            <option value="119 LRP 8A18">119 LRP 8A18</option>
-            <option value="120 LTF 9726">120 LTF 9726</option>
-            <option value="121 KRZ 8143">121 KRZ 8143</option>
-            <option value="122 DPF 7I23">122 DPF 7I23</option>
-            <option value="123 ATJ3F42">123 ATJ3F42</option>
-            <option value="124 ATI4G85">124 ATI4G85</option>
-            <option value="125 OWO2F73">125 OWO2F73</option>
-          </select></div>`:`<div class="fro"><span>Veículo</span><span>${d.VEICULO||'—'}</span></div>`}
+          <div class="fro"><span>Veículo</span><span>${d.VEICULO||'—'}</span></div>
 
           <div class="sec-title">📋 Dados da Base</div>
           <div class="fg"><label>Motorista</label>
@@ -576,7 +511,6 @@
       });
       recalc();
 
-      // Se já tem motorista selecionado (edição), mostra disponibilidade
       if (d.MOTORISTA) atualizarDisponibilidade();
     }
 
@@ -610,22 +544,19 @@
       const g = id => { const e=$('f-'+id); return e?e.value.trim():''; };
       const c = id => { const e=$(id); return e?e.textContent:''; };
 
-      // ── VALIDAÇÃO DE DISPONIBILIDADE (só para novos lançamentos) ───
       const aviso = $('aviso-disp');
       const proxHora = aviso && aviso.dataset.proxHora;
       const bloqueado = aviso && aviso.dataset.bloqueado;
       const pontoOn  = g('PONTO_ON');
 
-      if (dadosForm._novo) {
-        if (bloqueado) {
-          alert('🚫 Motorista ainda em operação — turno não encerrado. Aguarde o fechamento do turno para escalar.');
+      if (bloqueado) {
+        alert('🚫 Motorista ainda em operação — turno não encerrado. Aguarde o fechamento do turno para escalar.');
+        return;
+      }
+      if (proxHora && pontoOn) {
+        if (toMin(pontoOn) < toMin(proxHora)) {
+          alert(`⚠️ Motorista indisponível até ${proxHora}.\nO Ponto ON informado (${pontoOn}) é anterior à próxima disponibilidade.`);
           return;
-        }
-        if (proxHora && pontoOn) {
-          if (toMin(pontoOn) < toMin(proxHora)) {
-            alert(`⚠️ Motorista indisponível até ${proxHora}.\nO Ponto ON informado (${pontoOn}) é anterior à próxima disponibilidade.`);
-            return;
-          }
         }
       }
 
@@ -634,7 +565,7 @@
 
       const payload = {
         DATA: dadosForm.DATA||hojeISO(), OP: currentPerfil.op,
-        VEICULO: g('VEICULO')||dadosForm.VEICULO||'',
+        VEICULO: dadosForm.VEICULO||'',
         MOTORISTA: g('MOTORISTA'), DESTINO: g('DESTINO'),
         PONTO_ON: g('PONTO_ON'), PREVISAO_REFEICAO: c('c-PREV'),
         SAIDA_VEICULO_CD: g('SAIDA_VEICULO_CD'), SM: g('SM'),
@@ -726,8 +657,6 @@
     .btn-data:hover{border-color:var(--acc);color:var(--acc)}
     .btn-data-ativa{background:#4da6ff20!important;border-color:#4da6ff!important;color:#4da6ff!important}
     .dia-label{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
-    .btn-novo{display:flex;align-items:center;justify-content:center;width:100%;padding:13px;background:transparent;border:2px dashed var(--bord);border-radius:10px;color:var(--acc);font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:600;cursor:pointer;margin-bottom:16px;transition:all .2s}
-    .btn-novo:hover{border-color:var(--acc);background:#f0a50010}
     .card{background:var(--surf);border:1px solid var(--bord);border-left:4px solid var(--bord);border-radius:12px;padding:14px;cursor:pointer;transition:transform .1s;margin-bottom:12px}
     .card:active{transform:scale(.98)}
     .status-verde{border-left-color:#00c9a7}.status-amarelo{border-left-color:#fbbf24}
@@ -844,7 +773,6 @@
     <div style="padding:20px 20px 0" id="prog-lista"><div style="text-align:center;padding:40px;color:var(--muted)">Selecione uma data acima</div></div>
   </div>
 </div>
-
 
 <!-- LEGENDA MODAL -->
 <div id="legenda-overlay" onclick="if(event.target===this)fecharLegenda()" style="display:none;position:fixed;inset:0;background:#000a;z-index:500;align-items:center;justify-content:center">
