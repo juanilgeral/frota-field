@@ -32,7 +32,6 @@
     const auth = getAuth(app);
     const db   = getFirestore(app);
 
-    // Força persistência via localStorage para evitar logout em desktop
     setPersistence(auth, browserLocalPersistence).catch(console.error);
 
     let currentUser   = null;
@@ -43,10 +42,10 @@
     let dataProg      = null;
     let veiculosProg  = [];
     let unsubProg     = null;
+    let permissoes    = { LS: false, TL: false, HT: false, CV: false };
 
     const $ = id => document.getElementById(id);
 
-    // ── Utilitários de data ──────────────────────────────────────────
     function nowBR() {
       return new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Sao_Paulo'}));
     }
@@ -79,44 +78,29 @@
     const toMin = t => { if(!t) return 0; const [h,m]=t.split(':').map(Number); return h*60+m; };
     const toHM  = m => `${String(Math.floor(m/60)%24).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`;
 
-    // ── Disponibilidade do motorista ─────────────────────────────────
+    // ── Disponibilidade ──────────────────────────────────────────────
     async function buscarSituacaoMotorista(motorista, dataLancamento) {
       if (!motorista) return null;
       try {
         const diaAnt = diaAnterior(dataLancamento);
         const ehHoje = dataLancamento === hojeISO();
         const datas  = ehHoje ? [hojeISO(), diaAnt] : [diaAnt];
-
         for (const dataBusca of datas) {
-          const q = query(
-            collection(db, 'lancamentos'),
-            where('MOTORISTA', '==', motorista),
-            where('DATA', '==', dataBusca)
-          );
+          const q = query(collection(db,'lancamentos'), where('MOTORISTA','==',motorista), where('DATA','==',dataBusca));
           const snap = await getDocs(q);
           if (snap.empty) continue;
-
-          let emOperacao = false;
-          let melhorPoff = null;
-
+          let emOperacao = false, melhorPoff = null;
           snap.forEach(d => {
             const dado = d.data();
             const poff = dado.PONTO_OFF_MOT || dado.PONTO_OFF_MOTO || '';
             if (!poff) { emOperacao = true; }
             else { if (!melhorPoff || toMin(poff) > toMin(melhorPoff)) melhorPoff = poff; }
           });
-
           if (emOperacao) return { encerrado: false };
-          if (melhorPoff) {
-            const proxMin = (toMin(melhorPoff) + 11 * 60) % 1440;
-            return { encerrado: true, proxHora: toHM(proxMin) };
-          }
+          if (melhorPoff) { const proxMin = (toMin(melhorPoff)+11*60)%1440; return { encerrado: true, proxHora: toHM(proxMin) }; }
         }
         return null;
-      } catch(e) {
-        console.warn('Erro disponibilidade:', e);
-        return null;
-      }
+      } catch(e) { console.warn('Erro disponibilidade:', e); return null; }
     }
 
     async function atualizarDispSup() {
@@ -124,32 +108,23 @@
       const aviso = document.getElementById('aviso-disp-sup');
       if (!sel || !aviso) return;
       const motorista = sel.value;
-      if (!motorista) { aviso.style.display = 'none'; return; }
-
-      aviso.style.display = 'block';
-      aviso.style.background = '#ffffff10';
-      aviso.style.color = '#5a7a99';
-      aviso.textContent = '⏳ Verificando disponibilidade...';
-      delete aviso.dataset.proxHora;
-      delete aviso.dataset.bloqueado;
-
+      if (!motorista) { aviso.style.display='none'; return; }
+      aviso.style.display='block'; aviso.style.background='#ffffff10'; aviso.style.color='#5a7a99';
+      aviso.textContent='⏳ Verificando disponibilidade...';
+      delete aviso.dataset.proxHora; delete aviso.dataset.bloqueado;
       const dataRef = dadosDetalheSup ? dadosDetalheSup.DATA : hojeISO();
       const resultado = await buscarSituacaoMotorista(motorista, dataRef);
-
       if (!resultado) {
-        aviso.style.background = '#00c9a715';
-        aviso.style.color = '#00c9a7';
-        aviso.textContent = '✅ Sem registro no dia anterior — disponível';
+        aviso.style.background='#00c9a715'; aviso.style.color='#00c9a7';
+        aviso.textContent='✅ Sem registro no dia anterior — disponível';
       } else if (!resultado.encerrado) {
-        aviso.style.background = '#e8555520';
-        aviso.style.color = '#e85555';
-        aviso.textContent = '🚫 Motorista ainda em operação — turno não encerrado';
-        aviso.dataset.bloqueado = 'true';
+        aviso.style.background='#e8555520'; aviso.style.color='#e85555';
+        aviso.textContent='🚫 Motorista ainda em operação — turno não encerrado';
+        aviso.dataset.bloqueado='true';
       } else {
-        aviso.style.background = '#f0a50015';
-        aviso.style.color = '#f0a500';
-        aviso.textContent = `⏰ Próxima disponibilidade: ${resultado.proxHora}`;
-        aviso.dataset.proxHora = resultado.proxHora;
+        aviso.style.background='#f0a50015'; aviso.style.color='#f0a500';
+        aviso.textContent=`⏰ Próxima disponibilidade: ${resultado.proxHora}`;
+        aviso.dataset.proxHora=resultado.proxHora;
       }
     }
 
@@ -158,7 +133,6 @@
 
     // ── AUTH ─────────────────────────────────────────────────────────
     let authResolvido = false;
-
     onAuthStateChanged(auth, user => {
       if (user) {
         authResolvido = true;
@@ -166,14 +140,8 @@
         currentUser = user;
         mostrarDashboard();
       } else {
-        // Aguarda 1.5s antes de redirecionar — Firebase pode demorar a restaurar a sessão
-        if (authResolvido) {
-          mostrarLogin();
-        } else {
-          setTimeout(() => {
-            if (!authResolvido) mostrarLogin();
-          }, 1500);
-        }
+        if (authResolvido) { mostrarLogin(); }
+        else { setTimeout(() => { if (!authResolvido) mostrarLogin(); }, 1500); }
       }
     });
 
@@ -188,46 +156,75 @@
     function erroLogin(msg) { $('erro-login').textContent=msg; $('erro-login').style.display='block'; }
     window.fazerLogout = () => signOut(auth);
 
-    function mostrarLogin() {
-      $('login-tela').style.display     = 'flex';
-      $('dashboard-tela').style.display = 'none';
-    }
+    function mostrarLogin() { $('login-tela').style.display='flex'; $('dashboard-tela').style.display='none'; }
     function mostrarDashboard() {
-      $('login-tela').style.display     = 'none';
-      $('dashboard-tela').style.display = 'block';
-      $('sup-nome').textContent         = currentUser.email;
-      iniciarRelogio();
-      escutarLancamentos();
-      escutarUsuarios();
+      $('login-tela').style.display='none'; $('dashboard-tela').style.display='block';
+      $('sup-nome').textContent=currentUser.email;
+      iniciarRelogio(); escutarLancamentos(); escutarUsuarios(); escutarPermissoes();
       dataProg = dataFutura(1);
     }
 
     function iniciarRelogio() {
       const el = $('relogio');
-      const tick = () => {
-        const d = new Date();
-        if(el) el.textContent = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-      };
+      const tick = () => { const d=new Date(); if(el) el.textContent=`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
       tick(); setInterval(tick,1000);
     }
 
+    // ── PERMISSÕES ────────────────────────────────────────────────────
+    function escutarPermissoes() {
+      onSnapshot(doc(db,'configuracoes','permissoes'), snap => {
+        if (snap.exists()) {
+          const d = snap.data();
+          permissoes = { LS: !!d.LS, TL: !!d.TL, HT: !!d.HT, CV: !!d.CV };
+        } else {
+          permissoes = { LS: false, TL: false, HT: false, CV: false };
+        }
+        renderPermissoes();
+      });
+    }
+
+    function renderPermissoes() {
+      const el = $('sec-permissoes'); if(!el) return;
+      el.innerHTML = `
+        <div class="usr-grupo-title" style="margin-bottom:16px">🔐 Permissão de Novo Lançamento por Operação</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:20px">Quando ON, o auxiliar/encarregado da operação pode criar novos lançamentos no app. Quando OFF, só pode editar os que já existem.</p>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          ${['LS','TL','HT','CV'].map(op => {
+            const cor = OP_CORES[op]||'#6b8099';
+            const ativo = permissoes[op];
+            return `<div style="display:flex;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--bord);border-radius:12px;padding:16px 20px">
+              <div style="display:flex;align-items:center;gap:12px">
+                <span style="background:${cor}20;color:${cor};padding:4px 14px;border-radius:6px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px">${op}</span>
+                <span style="font-size:14px;color:${ativo?'#34d399':'var(--muted)'}">${ativo?'✅ Permitido':'🚫 Bloqueado'}</span>
+              </div>
+              <button onclick="togglePermissao('${op}')" style="padding:8px 20px;border-radius:8px;border:none;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;background:${ativo?'#e8555520':'#34d39920'};color:${ativo?'#e85555':'#34d399'};border:1px solid ${ativo?'#e8555540':'#34d39940'}">
+                ${ativo?'🔒 Desativar':'🔓 Ativar'}
+              </button>
+            </div>`;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    window.togglePermissao = async (op) => {
+      const novoValor = !permissoes[op];
+      permissoes[op] = novoValor;
+      await setDoc(doc(db,'configuracoes','permissoes'), permissoes, {merge:true});
+    };
+
     // ── ESCUTAS FIRESTORE ─────────────────────────────────────────────
     function escutarLancamentos() {
-      onSnapshot(
-        query(collection(db,'lancamentos'), where('DATA','==',hojeISO())),
-        snap => {
-          todosLanc = [];
-          snap.forEach(d => todosLanc.push({fid:d.id,...d.data()}));
-          renderCards(); renderTabela();
-        }
-      );
+      onSnapshot(query(collection(db,'lancamentos'), where('DATA','==',hojeISO())), snap => {
+        todosLanc = [];
+        snap.forEach(d => todosLanc.push({fid:d.id,...d.data()}));
+        renderCards(); renderTabela();
+      });
     }
     function escutarUsuarios() {
       onSnapshot(collection(db,'usuarios'), snap => {
         todosUsers = [];
         snap.forEach(d => todosUsers.push({uid:d.id,...d.data()}));
-        renderUsuarios();
-        atualizarBadgePendentes();
+        renderUsuarios(); atualizarBadgePendentes();
       });
     }
 
@@ -235,42 +232,32 @@
     window.irAba = (aba) => {
       abaPainel = aba;
       ['dashboard','usuarios','programacao'].forEach(a => {
-        const btn = $('aba-'+a);
-        const sec = $('sec-'+a);
+        const btn = $('aba-'+a); const sec = $('sec-'+a);
         if(btn) btn.classList.toggle('ativa', a===aba);
         if(sec) sec.style.display = a===aba ? 'block' : 'none';
       });
-      if (aba==='programacao') {
-        dataProg = dataProg || dataFutura(1);
-        renderDatePickerSup();
-        carregarProgSup();
-      }
+      if (aba==='programacao') { dataProg = dataProg||dataFutura(1); renderDatePickerSup(); carregarProgSup(); }
     };
 
     function atualizarBadgePendentes() {
-      const n = todosUsers.filter(u => u.status==='pendente').length;
+      const n = todosUsers.filter(u=>u.status==='pendente').length;
       const badge = $('badge-pendentes');
-      if(badge) { badge.textContent = n||''; badge.style.display = n?'inline-block':'none'; }
+      if(badge) { badge.textContent=n||''; badge.style.display=n?'inline-block':'none'; }
     }
 
     // ── DASHBOARD ─────────────────────────────────────────────────────
     function calcStatus(v) {
-      const agora  = new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Sao_Paulo'}));
-      const hMin   = agora.getHours()*60 + agora.getMinutes();
-      const tMin   = t => { if(!t) return null; const p=t.split(':').map(Number); return p[0]*60+(p[1]||0); };
-      const isHoje = !v.DATA || v.DATA === hojeISO();
-
-      if (v.CHEGADA_VEICULO_CD && v.KM_CHEGADA) return {key:'concluido', label:'Concluído',    cor:'#34d399'};
-      if (v.SAIDA_1 || v.ABERTURA_1)            return {key:'rota',      label:'Em rota',      cor:'#fbbf24'};
-
-      // Em trânsito: só se for hoje E hora da saída já passou
+      const agora = new Date(new Date().toLocaleString('en-US', {timeZone:'America/Sao_Paulo'}));
+      const hMin  = agora.getHours()*60+agora.getMinutes();
+      const tMin  = t => { if(!t) return null; const p=t.split(':').map(Number); return p[0]*60+(p[1]||0); };
+      const isHoje = !v.DATA || v.DATA===hojeISO();
+      if (v.CHEGADA_VEICULO_CD && v.KM_CHEGADA) return {key:'concluido',label:'Concluído',cor:'#34d399'};
+      if (v.SAIDA_1 || v.ABERTURA_1)            return {key:'rota',label:'Em rota',cor:'#fbbf24'};
       const saidaMin = tMin(v.SAIDA_VEICULO_CD);
-      if (isHoje && saidaMin !== null && hMin >= saidaMin) return {key:'transito', label:'Em trânsito', cor:'#f97316'};
-
+      if (isHoje && saidaMin!==null && hMin>=saidaMin) return {key:'transito',label:'Em trânsito',cor:'#f97316'};
       const pontoOnMin = tMin(v.PONTO_ON);
-      if (isHoje && pontoOnMin !== null && hMin >= pontoOnMin) return {key:'iniciado', label:'Iniciado', cor:'#4da6ff'};
-
-      return {key:'pendente', label:'Pendente', cor:'#6b8099'};
+      if (isHoje && pontoOnMin!==null && hMin>=pontoOnMin) return {key:'iniciado',label:'Iniciado',cor:'#4da6ff'};
+      return {key:'pendente',label:'Pendente',cor:'#6b8099'};
     }
 
     function renderCards() {
@@ -278,35 +265,24 @@
       $('c-concluido').textContent = todosLanc.filter(v=>calcStatus(v).key==='concluido').length;
       $('c-rota').textContent      = todosLanc.filter(v=>['rota','transito','iniciado'].includes(calcStatus(v).key)).length;
       $('c-pendente').textContent  = todosLanc.filter(v=>calcStatus(v).key==='pendente').length;
-      ['LS','TL','HT','CV'].forEach(op => {
-        const el = $('op-'+op);
-        if(el) el.textContent = todosLanc.filter(v=>v.OP===op).length;
-      });
+      ['LS','TL','HT','CV'].forEach(op => { const el=$('op-'+op); if(el) el.textContent=todosLanc.filter(v=>v.OP===op).length; });
     }
 
     window.setFiltroOp = op => {
       filtroOp = op;
-      document.querySelectorAll('.btn-op').forEach(b => b.classList.toggle('ativo', b.dataset.op===op));
+      document.querySelectorAll('.btn-op').forEach(b=>b.classList.toggle('ativo',b.dataset.op===op));
       renderTabela();
     };
 
     function renderTabela() {
       let lista = [...todosLanc];
-      if (filtroOp !== 'TODAS') lista = lista.filter(v=>v.OP===filtroOp);
-      lista.sort((a,b) => {
-        const ord={pendente:0,iniciado:1,transito:2,rota:3,concluido:4};
-        return (ord[calcStatus(a).key]||0) - (ord[calcStatus(b).key]||0);
-      });
+      if (filtroOp!=='TODAS') lista=lista.filter(v=>v.OP===filtroOp);
+      lista.sort((a,b)=>{ const ord={pendente:0,iniciado:1,transito:2,rota:3,concluido:4}; return (ord[calcStatus(a).key]||0)-(ord[calcStatus(b).key]||0); });
       const tbody = $('tbody');
-      if (!lista.length) {
-        tbody.innerHTML = `<tr><td colspan="8" class="empty-row">Nenhum lançamento encontrado</td></tr>`;
-        $('cnt-label').textContent = '0 registros';
-        return;
-      }
-      $('cnt-label').textContent = `${lista.length} registro${lista.length>1?'s':''}`;
+      if (!lista.length) { tbody.innerHTML=`<tr><td colspan="9" class="empty-row">Nenhum lançamento encontrado</td></tr>`; $('cnt-label').textContent='0 registros'; return; }
+      $('cnt-label').textContent=`${lista.length} registro${lista.length>1?'s':''}`;
       tbody.innerHTML = lista.map(v => {
-        const st = calcStatus(v);
-        const cor = OP_CORES[v.OP]||'#6b8099';
+        const st=calcStatus(v); const cor=OP_CORES[v.OP]||'#6b8099';
         return `<tr class="tr-data" onclick="abrirDetalhe('${v.fid}','hoje')">
           <td><span class="op-pill" style="background:${cor}20;color:${cor}">${v.OP||'—'}</span></td>
           <td class="col-placa">${v.VEICULO||'—'}</td>
@@ -323,64 +299,37 @@
 
     // ── ABA PROGRAMAÇÃO ───────────────────────────────────────────────
     function renderDatePickerSup() {
-      const c = $('date-picker-sup'); if(!c) return;
-      c.innerHTML = [0,1,2,3].map(n => {
-        const iso = dataFutura(n);
-        const lbl = n===0 ? `Hoje ${labelData(iso)}` : labelData(iso);
+      const c=$('date-picker-sup'); if(!c) return;
+      c.innerHTML=[0,1,2,3].map(n=>{
+        const iso=dataFutura(n); const lbl=n===0?`Hoje ${labelData(iso)}`:labelData(iso);
         return `<button class="btn-data${iso===dataProg?' btn-data-ativa':''}" onclick="selecionarDataProgSup('${iso}')">${lbl}</button>`;
       }).join('');
     }
 
-    window.selecionarDataProgSup = (iso) => {
-      dataProg = iso;
-      renderDatePickerSup();
-      carregarProgSup();
-    };
+    window.selecionarDataProgSup = (iso) => { dataProg=iso; renderDatePickerSup(); carregarProgSup(); };
 
     function carregarProgSup() {
       if (!dataProg) return;
       if (unsubProg) { unsubProg(); unsubProg=null; }
-      const q = query(collection(db,'lancamentos'), where('DATA','==',dataProg));
-      unsubProg = onSnapshot(q, snap => {
-        veiculosProg = [];
-        snap.forEach(d => veiculosProg.push({fid:d.id,...d.data()}));
+      const q=query(collection(db,'lancamentos'), where('DATA','==',dataProg));
+      unsubProg=onSnapshot(q, snap=>{
+        veiculosProg=[];
+        snap.forEach(d=>veiculosProg.push({fid:d.id,...d.data()}));
         renderProgListaSup();
       });
     }
 
     function renderProgListaSup() {
-      const lista = $('prog-lista-sup'); if(!lista) return;
-      const btnNovo = `<button onclick="abrirNovoSup('${dataProg}')" style="display:flex;align-items:center;justify-content:center;width:100%;padding:12px;background:transparent;border:2px dashed var(--bord);border-radius:10px;color:var(--acc);font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:600;cursor:pointer;margin-bottom:16px">+ Programar para ${labelData(dataProg)}</button>`;
-
-      let filtrado = [...veiculosProg];
-      if (filtroOp !== 'TODAS') filtrado = filtrado.filter(v=>v.OP===filtroOp);
-
-      if (!filtrado.length) {
-        lista.innerHTML = btnNovo + `<div style="text-align:center;padding:40px;color:var(--muted)">📅 Nenhum lançamento para ${labelData(dataProg)}.</div>`;
-        return;
-      }
-      lista.innerHTML = btnNovo + filtrado.map(v => {
-        const cor = OP_CORES[v.OP]||'#6b8099';
-        return `<tr class="tr-data" onclick="abrirDetalhe('${v.fid}','prog')">
-          <td><span class="op-pill" style="background:${cor}20;color:${cor}">${v.OP||'—'}</span></td>
-          <td class="col-placa">${v.VEICULO||'—'}</td>
-          <td>${v.MOTORISTA||'—'}</td>
-          <td style="font-size:12px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.DESTINO||'—'}</td>
-          <td class="mono">${v.PONTO_ON||'—'}</td>
-          <td class="mono">${v.SAIDA_VEICULO_CD||'—'}</td>
-          <td class="mono">—</td>
-          <td class="mono">—</td>
-          <td><span class="st-dot" style="background:#4da6ff"></span>Programado</td>
-        </tr>`;
-      }).join('');
-
-      // Envolve em tabela
-      lista.innerHTML = btnNovo + `<table><thead><tr>
-        <th>OP</th><th>Veículo</th><th>Motorista</th>
-        <th>Ponto ON</th><th>Saída CD</th><th>Chegada CD</th>
-        <th>KM</th><th>Status</th>
-      </tr></thead><tbody>${filtrado.map(v => {
-        const cor = OP_CORES[v.OP]||'#6b8099';
+      const lista=$('prog-lista-sup'); if(!lista) return;
+      const btnNovo=`<button onclick="abrirNovoSup('${dataProg}')" style="display:flex;align-items:center;justify-content:center;width:100%;padding:12px;background:transparent;border:2px dashed var(--bord);border-radius:10px;color:var(--acc);font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:600;cursor:pointer;margin-bottom:16px">+ Programar para ${labelData(dataProg)}</button>`;
+      let filtrado=[...veiculosProg];
+      if (filtroOp!=='TODAS') filtrado=filtrado.filter(v=>v.OP===filtroOp);
+      if (!filtrado.length) { lista.innerHTML=btnNovo+`<div style="text-align:center;padding:40px;color:var(--muted)">📅 Nenhum lançamento para ${labelData(dataProg)}.</div>`; return; }
+      lista.innerHTML=btnNovo+`<table><thead><tr>
+        <th>OP</th><th>Veículo</th><th>Motorista</th><th>Destino</th>
+        <th>Ponto ON</th><th>Saída CD</th><th>Chegada CD</th><th>KM</th><th>Status</th>
+      </tr></thead><tbody>${filtrado.map(v=>{
+        const cor=OP_CORES[v.OP]||'#6b8099';
         return `<tr class="tr-data" onclick="abrirDetalhe('${v.fid}','prog')">
           <td><span class="op-pill" style="background:${cor}20;color:${cor}">${v.OP||'—'}</span></td>
           <td class="col-placa">${v.VEICULO||'—'}</td>
@@ -395,43 +344,34 @@
     }
 
     // ── DETALHE / FORMULÁRIO ──────────────────────────────────────────
-    const WEBHOOK_URL_SUP = 'https://script.google.com/macros/s/AKfycbxZxi8vPx1gAoys7W1Poy88BwNf7Zq9tIhmFO6h511kHQhplGPcdkmGdwQ7afqzzcTsCA/exec';
-    const MOTORISTAS_SUP = ['ALEXANDRE','DANIEL','DEVANILSO','HERIBERTO','SÉRGIO','ANTÔNIO','CAMARA','NEVES','VALDIR','ROGERIO','EDILSON','SÉRGIO SILVA','GILMAR','SANDRO','LUIZ','MEDEIROS','NOGUEIRA','RICARDO','EDUARDO','CLAUDINEI','DUARTE','ROBERTO','ROSENDO','ANDERSON','ISAÍAS','RENÊ','ADRIANO','JOEL','WALMIR','ANDRÉ','VAGNER','CÉLIO','OLIVEIRA','MARCIO','ROBSON','THIAGO','CARLOS','MARCELO','VITOR','EDSON','LEONARDO','EDILEI'];
-    const VEICULOS_SUP = ['063 LBW 8156','064 LUV 9296','065 KZQ 9648','066 LUB 1400','067 LUX 9063','068 LSN 1702','074 LKK 6551','075 KUT 8573','088 KYP 3601','091 KPE 2252','092 LSF 4199','093 KVF 3715','094 KQT 1919','095 LTJ 4440','096 KQS 2672','097 LRX 4831','098 LRX 4828','099 LRX 4830','100 LRX 4829','101 LRX 4832','102 LRT 4821','103 KWB 9779','104 LRC 3089','105 KPU 7450','106 LSZ 5959','107 LRR 8757','108 LSM 7748','109 LSM 7749','110 LSM 7750','111 KRO 8527','112 KRO 8528','113 KXU 6988','114 KXU 6989','115 KXW 7716','116 LSQ 6092','117 KRR 2728','118 LSQ 6093','119 LRP 8A18','120 LTF 9726','121 KRZ 8143','122 DPF 7I23','123 ATJ3F42','124 ATI4G85','125 OWO2F73'];
+    const WEBHOOK_URL_SUP='https://script.google.com/macros/s/AKfycbxZxi8vPx1gAoys7W1Poy88BwNf7Zq9tIhmFO6h511kHQhplGPcdkmGdwQ7afqzzcTsCA/exec';
+    const MOTORISTAS_SUP=['ALEXANDRE','DANIEL','DEVANILSO','HERIBERTO','SÉRGIO','ANTÔNIO','CAMARA','NEVES','VALDIR','ROGERIO','EDILSON','SÉRGIO SILVA','GILMAR','SANDRO','LUIZ','MEDEIROS','NOGUEIRA','RICARDO','EDUARDO','CLAUDINEI','DUARTE','ROBERTO','ROSENDO','ANDERSON','ISAÍAS','RENÊ','ADRIANO','JOEL','WALMIR','ANDRÉ','VAGNER','CÉLIO','OLIVEIRA','MARCIO','ROBSON','THIAGO','CARLOS','MARCELO','VITOR','EDSON','LEONARDO','EDILEI'];
+    const VEICULOS_SUP=['063 LBW 8156','064 LUV 9296','065 KZQ 9648','066 LUB 1400','067 LUX 9063','068 LSN 1702','074 LKK 6551','075 KUT 8573','088 KYP 3601','091 KPE 2252','092 LSF 4199','093 KVF 3715','094 KQT 1919','095 LTJ 4440','096 KQS 2672','097 LRX 4831','098 LRX 4828','099 LRX 4830','100 LRX 4829','101 LRX 4832','102 LRT 4821','103 KWB 9779','104 LRC 3089','105 KPU 7450','106 LSZ 5959','107 LRR 8757','108 LSM 7748','109 LSM 7749','110 LSM 7750','111 KRO 8527','112 KRO 8528','113 KXU 6988','114 KXU 6989','115 KXW 7716','116 LSQ 6092','117 KRR 2728','118 LSQ 6093','119 LRP 8A18','120 LTF 9726','121 KRZ 8143','122 DPF 7I23','123 ATJ3F42','124 ATI4G85','125 OWO2F73'];
 
-    let dadosDetalheSup = null;
+    let dadosDetalheSup=null;
 
-    window.apagarLancamentoSup = async (fid) => {
-      if (!confirm('Apagar este lançamento?')) return;
-      await deleteDoc(doc(db,'lancamentos', fid));
-      fecharDetalhe();
+    window.apagarLancamentoSup=async(fid)=>{ if(!confirm('Apagar este lançamento?')) return; await deleteDoc(doc(db,'lancamentos',fid)); fecharDetalhe(); };
+
+    window.abrirDetalhe=(fid,origem)=>{
+      const lista=origem==='prog'?veiculosProg:todosLanc;
+      const v=lista.find(x=>x.fid===fid); if(!v) return; abrirFormSup(v);
     };
 
-    window.abrirDetalhe = (fid, origem) => {
-      const lista = origem==='prog' ? veiculosProg : todosLanc;
-      const v = lista.find(x=>x.fid===fid);
-      if(!v) return;
-      abrirFormSup(v);
-    };
-
-    window.abrirNovoSup = (data) => {
-      const dataUso = data || hojeISO();
-      abrirFormSup({ fid: null, DATA: dataUso, OP: '', VEICULO: '', _novo: true });
+    window.abrirNovoSup=(data)=>{
+      const dataUso=data||hojeISO();
+      abrirFormSup({fid:null,DATA:dataUso,OP:'',VEICULO:'',_novo:true});
     };
 
     function abrirFormSup(v) {
-      dadosDetalheSup = v;
-      const st  = calcStatus(v);
-      const cor = OP_CORES[v.OP]||'#6b8099';
-      const isProg = v.DATA && v.DATA !== hojeISO();
+      dadosDetalheSup=v;
+      const st=calcStatus(v); const cor=OP_CORES[v.OP]||'#6b8099';
+      const isProg=v.DATA && v.DATA!==hojeISO();
+      $('det-titulo').innerHTML=v._novo?`+ Novo Lançamento`:`<span class="op-pill" style="background:${cor}20;color:${cor}">${v.OP}</span> ${v.VEICULO||'—'}`;
+      $('det-sub').textContent=v._novo?(v.DATA||hojeISO()):`${v.MOTORISTA||'—'} · ${v.DATA||''}${isProg?' 📅':''}`;
+      $('det-st').innerHTML=v._novo?'':`<span class="st-dot" style="background:${st.cor}"></span>${st.label||''}`;
 
-      $('det-titulo').innerHTML = v._novo ? `+ Novo Lançamento` : `<span class="op-pill" style="background:${cor}20;color:${cor}">${v.OP}</span> ${v.VEICULO||'—'}`;
-      $('det-sub').textContent  = v._novo ? (v.DATA||hojeISO()) : `${v.MOTORISTA||'—'} · ${v.DATA||''}${isProg?' 📅':''}`;
-      $('det-st').innerHTML     = v._novo ? '' : `<span class="st-dot" style="background:${st.cor}"></span>${st.label||''}`;
-
-      const fgs = (id, label, type, val, onchg) => {
-        const v2 = val||'';
-        const oc = onchg ? ` onchange="${onchg}"` : '';
+      const fgs=(id,label,type,val,onchg)=>{
+        const v2=val||''; const oc=onchg?` onchange="${onchg}"`:' ';
         if(type==='sel-mot') return `<div class="det-fg"><label>${label}</label><select id="sf-${id}" class="det-input"${oc}><option value="">—</option>${MOTORISTAS_SUP.map(m=>`<option${m===v2?' selected':''}>${m}</option>`).join('')}</select></div>`;
         if(type==='sel-veic') return `<div class="det-fg"><label>${label}</label><select id="sf-${id}" class="det-input"><option value="">—</option>${VEICULOS_SUP.map(m=>`<option${m===v2?' selected':''}>${m}</option>`).join('')}</select></div>`;
         if(type==='sel-op') return `<div class="det-fg"><label>${label}</label><select id="sf-${id}" class="det-input"><option value="">—</option><option>LS</option><option>TL</option><option>HT</option><option>CV</option></select></div>`;
@@ -439,179 +379,118 @@
         return `<div class="det-fg"><label>${label}</label><input id="sf-${id}" type="${type}" value="${v2}" class="det-input"></div>`;
       };
 
-      $('det-campos').innerHTML = `
-        ${isProg ? `<div style="background:#4da6ff15;border:1px solid #4da6ff40;border-radius:8px;padding:10px 14px;font-size:13px;color:#4da6ff;margin-bottom:14px">📅 Programação para <strong>${labelData(v.DATA)}</strong></div>` : ''}
+      $('det-campos').innerHTML=`
+        ${isProg?`<div style="background:#4da6ff15;border:1px solid #4da6ff40;border-radius:8px;padding:10px 14px;font-size:13px;color:#4da6ff;margin-bottom:14px">📅 Programação para <strong>${labelData(v.DATA)}</strong></div>`:''}
         <div class="det-sec">📋 Dados da Base</div>
-        ${v._novo ? fgs('OP','Operação','sel-op','') : ''}
-        ${fgs('VEICULO','Veículo','sel-veic', v.VEICULO)}
-        ${fgs('MOTORISTA','Motorista','sel-mot', v.MOTORISTA, 'atualizarDispSup()')}
+        ${v._novo?fgs('OP','Operação','sel-op',''):''}
+        ${fgs('VEICULO','Veículo','sel-veic',v.VEICULO)}
+        ${fgs('MOTORISTA','Motorista','sel-mot',v.MOTORISTA,'atualizarDispSup()')}
         <div id="aviso-disp-sup" style="display:none;padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:14px;border:1px solid transparent"></div>
-        ${fgs('DESTINO','Destino / Rota','text', v.DESTINO)}
-        ${fgs('PONTO_ON','Ponto ON Motorista','time', v.PONTO_ON)}
-        ${fgs('SAIDA_VEICULO_CD','Saída Veículo CD','time', v.SAIDA_VEICULO_CD)}
-        ${fgs('SM','SM','text', v.SM)}
-        ${fgs('DATA_CARRG','Data Carregamento','date', v.DATA_CARRG)}
-        ${fgs('KM_SAIDA','KM Saída','number', v.KM_SAIDA)}
-        ${fgs('LOJA_1','Prev. Chegada 1ª Loja','time', v.LOJA_1)}
-        ${fgs('ABERTURA_1','Abertura 1ª Loja','time', v.ABERTURA_1)}
+        ${fgs('DESTINO','Destino / Rota','text',v.DESTINO)}
+        ${fgs('PONTO_ON','Ponto ON Motorista','time',v.PONTO_ON)}
+        ${fgs('SAIDA_VEICULO_CD','Saída Veículo CD','time',v.SAIDA_VEICULO_CD)}
+        ${fgs('SM','SM','text',v.SM)}
+        ${fgs('DATA_CARRG','Data Carregamento','date',v.DATA_CARRG)}
+        ${fgs('KM_SAIDA','KM Saída','number',v.KM_SAIDA)}
+        ${fgs('LOJA_1','Prev. Chegada 1ª Loja','time',v.LOJA_1)}
+        ${fgs('ABERTURA_1','Abertura 1ª Loja','time',v.ABERTURA_1)}
         <div class="det-sec">🚛 Preenchimento em Campo</div>
-        ${fgs('FECHADO_1','Fechado 1ª Loja','time', v.FECHADO_1)}
-        ${fgs('SAIDA_1','Saída 1ª Loja','time', v.SAIDA_1)}
-        ${fgs('LOJA_2','Prev. Chegada 2ª Loja','time', v.LOJA_2)}
-        ${fgs('ABERTURA_2','Abertura 2ª Loja','time', v.ABERTURA_2)}
-        ${fgs('FECHADO_2','Fechado 2ª Loja','time', v.FECHADO_2)}
-        ${fgs('SAIDA_2','Saída 2ª Loja','time', v.SAIDA_2)}
-        ${fgs('DIESEL_CHEGADA','Diesel Chegada','time', v.DIESEL_CHEGADA)}
-        ${fgs('CHEGADA_VEICULO_CD','Chegada Veículo CD','time', v.CHEGADA_VEICULO_CD)}
-        ${fgs('PONTO_OFF_MOT','Ponto OFF Motorista (CD)','time', v.PONTO_OFF_MOT||v.PONTO_OFF_MOTO)}
-        ${fgs('DATA_CHEGADA','Data Chegada','date', v.DATA_CHEGADA)}
-        ${fgs('KM_CHEGADA','KM Chegada','number', v.KM_CHEGADA)}
-        ${fgs('OBSERVACOES','Observações','textarea', v.OBSERVACOES)}
+        ${fgs('FECHADO_1','Fechado 1ª Loja','time',v.FECHADO_1)}
+        ${fgs('SAIDA_1','Saída 1ª Loja','time',v.SAIDA_1)}
+        ${fgs('LOJA_2','Prev. Chegada 2ª Loja','time',v.LOJA_2)}
+        ${fgs('ABERTURA_2','Abertura 2ª Loja','time',v.ABERTURA_2)}
+        ${fgs('FECHADO_2','Fechado 2ª Loja','time',v.FECHADO_2)}
+        ${fgs('SAIDA_2','Saída 2ª Loja','time',v.SAIDA_2)}
+        ${fgs('DIESEL_CHEGADA','Diesel Chegada','time',v.DIESEL_CHEGADA)}
+        ${fgs('CHEGADA_VEICULO_CD','Chegada Veículo CD','time',v.CHEGADA_VEICULO_CD)}
+        ${fgs('PONTO_OFF_MOT','Ponto OFF Motorista (CD)','time',v.PONTO_OFF_MOT||v.PONTO_OFF_MOTO)}
+        ${fgs('DATA_CHEGADA','Data Chegada','date',v.DATA_CHEGADA)}
+        ${fgs('KM_CHEGADA','KM Chegada','number',v.KM_CHEGADA)}
+        ${fgs('OBSERVACOES','Observações','textarea',v.OBSERVACOES)}
         <button id="btn-salvar-sup" onclick="salvarSup()" style="width:100%;margin-top:16px;padding:14px;background:#f0a500;color:#080f18;border:none;border-radius:8px;font-size:16px;font-weight:700;cursor:pointer">💾 Salvar</button>
         <div id="msg-ok-sup" style="display:none;margin-top:10px;padding:10px;background:#00c9a720;border:1px solid #00c9a7;border-radius:8px;color:#00c9a7;text-align:center">✅ Salvo!</div>
         <button onclick="apagarLancamentoSup('${v.fid}')" style="width:100%;margin-top:10px;padding:10px;background:none;border:1px solid #e8555560;color:#e85555;border-radius:8px;cursor:pointer;font-size:13px${!v.fid?';display:none':''}">🗑 Apagar lançamento</button>
       `;
-
       $('overlay').style.display='flex';
-
-      // Se já tem motorista, verifica disponibilidade
       if (v.MOTORISTA) atualizarDispSup();
     }
 
-    window.salvarSup = async () => {
-      const btnSalvar = document.getElementById('btn-salvar-sup');
-      if (btnSalvar) { btnSalvar.disabled=true; btnSalvar.textContent='Salvando...'; }
-
-      const g = id => { const e=document.getElementById('sf-'+id); return e?e.value.trim():''; };
-      const v = dadosDetalheSup;
-
-      // Validação de disponibilidade (só para novos lançamentos)
-      const aviso = document.getElementById('aviso-disp-sup');
-      const proxHora = aviso && aviso.dataset.proxHora;
-      const bloqueado = aviso && aviso.dataset.bloqueado;
-      const pontoOn = g('PONTO_ON');
-
-      if (v._novo) {
-        if (bloqueado) {
-          alert('🚫 Motorista ainda em operação — turno não encerrado.');
-          return;
-        }
-        if (proxHora && pontoOn) {
-          if (toMin(pontoOn) < toMin(proxHora)) {
-            alert(`⚠️ Motorista indisponível até ${proxHora}.\nO Ponto ON (${pontoOn}) é anterior à próxima disponibilidade.`);
-            return;
-          }
-        }
+    window.salvarSup=async()=>{
+      const btnSalvar=document.getElementById('btn-salvar-sup');
+      if(btnSalvar){btnSalvar.disabled=true;btnSalvar.textContent='Salvando...';}
+      const g=id=>{const e=document.getElementById('sf-'+id);return e?e.value.trim():'';};
+      const v=dadosDetalheSup;
+      const aviso=document.getElementById('aviso-disp-sup');
+      const proxHora=aviso&&aviso.dataset.proxHora;
+      const bloqueado=aviso&&aviso.dataset.bloqueado;
+      const pontoOn=g('PONTO_ON');
+      if(v._novo){
+        if(bloqueado){alert('🚫 Motorista ainda em operação — turno não encerrado.');if(btnSalvar){btnSalvar.disabled=false;btnSalvar.textContent='💾 Salvar';}return;}
+        if(proxHora&&pontoOn&&toMin(pontoOn)<toMin(proxHora)){alert(`⚠️ Motorista indisponível até ${proxHora}.\nO Ponto ON (${pontoOn}) é anterior à próxima disponibilidade.`);if(btnSalvar){btnSalvar.disabled=false;btnSalvar.textContent='💾 Salvar';}return;}
       }
-
-      const calcTL = (ab,sa) => ab&&sa ? toHM(Math.max(0,toMin(sa)-toMin(ab))) : '';
-      const tl1 = calcTL(g('ABERTURA_1'),g('SAIDA_1'));
-      const tl2 = calcTL(g('ABERTURA_2'),g('SAIDA_2'));
-      const kmP = g('KM_SAIDA')&&g('KM_CHEGADA') ? String(Math.max(0,Number(g('KM_CHEGADA'))-Number(g('KM_SAIDA')))) : '';
-      const htot = g('PONTO_ON')&&g('PONTO_OFF_MOT') ? toHM(Math.max(0,toMin(g('PONTO_OFF_MOT'))-toMin(g('PONTO_ON')))) : '';
-      const prev = g('PONTO_ON') ? toHM((toMin(g('PONTO_ON'))+300)%1440) : '';
-      const tTotal = () => { const a=toMin(tl1),b=toMin(tl2); return (a||b)?toHM(a+b):''; };
-
-      const payload = {
-        DATA: v.DATA, OP: v.OP || g('OP'),
-        VEICULO: g('VEICULO')||v.VEICULO, MOTORISTA: g('MOTORISTA'),
-        DESTINO: g('DESTINO'), PONTO_ON: g('PONTO_ON'), PREVISAO_REFEICAO: prev,
-        SAIDA_VEICULO_CD: g('SAIDA_VEICULO_CD'), SM: g('SM'),
-        DATA_CARRG: g('DATA_CARRG'), ALMOCO: g('ALMOCO'),
-        KM_SAIDA: g('KM_SAIDA'), LOJA_1: g('LOJA_1'),
-        ABERTURA_1: g('ABERTURA_1'), FECHADO_1: g('FECHADO_1'), SAIDA_1: g('SAIDA_1'),
-        TOTAL_LOJA_1: tl1, LOJA_2: g('LOJA_2'),
-        ABERTURA_2: g('ABERTURA_2'), FECHADO_2: g('FECHADO_2'), SAIDA_2: g('SAIDA_2'),
-        TOTAL_LOJA_2: tl2, TOTAL_LOJA: tTotal(),
-        DIESEL_CHEGADA: g('DIESEL_CHEGADA'), CHEGADA_VEICULO_CD: g('CHEGADA_VEICULO_CD'),
-        PONTO_OFF_MOT: g('PONTO_OFF_MOT'), PONTO_OFF_MOTO: g('PONTO_OFF_MOT'),
-        HORA_TOTAL_MOTORISTA: htot, DATA_CHEGADA: g('DATA_CHEGADA'),
-        KM_CHEGADA: g('KM_CHEGADA'), KM_PERCORRIDO: kmP,
-        OBSERVACOES: g('OBSERVACOES'), _por: currentUser.email, _em: serverTimestamp()
+      const calcTL=(ab,sa)=>ab&&sa?toHM(Math.max(0,toMin(sa)-toMin(ab))):'';
+      const tl1=calcTL(g('ABERTURA_1'),g('SAIDA_1')); const tl2=calcTL(g('ABERTURA_2'),g('SAIDA_2'));
+      const kmP=g('KM_SAIDA')&&g('KM_CHEGADA')?String(Math.max(0,Number(g('KM_CHEGADA'))-Number(g('KM_SAIDA')))):'';
+      const htot=g('PONTO_ON')&&g('PONTO_OFF_MOT')?toHM(Math.max(0,toMin(g('PONTO_OFF_MOT'))-toMin(g('PONTO_ON')))):'';
+      const prev=g('PONTO_ON')?toHM((toMin(g('PONTO_ON'))+300)%1440):'';
+      const tTotal=()=>{const a=toMin(tl1),b=toMin(tl2);return(a||b)?toHM(a+b):'';};
+      const payload={
+        DATA:v.DATA,OP:v.OP||g('OP'),VEICULO:g('VEICULO')||v.VEICULO,MOTORISTA:g('MOTORISTA'),
+        DESTINO:g('DESTINO'),PONTO_ON:g('PONTO_ON'),PREVISAO_REFEICAO:prev,
+        SAIDA_VEICULO_CD:g('SAIDA_VEICULO_CD'),SM:g('SM'),DATA_CARRG:g('DATA_CARRG'),ALMOCO:g('ALMOCO'),
+        KM_SAIDA:g('KM_SAIDA'),LOJA_1:g('LOJA_1'),ABERTURA_1:g('ABERTURA_1'),FECHADO_1:g('FECHADO_1'),SAIDA_1:g('SAIDA_1'),
+        TOTAL_LOJA_1:tl1,LOJA_2:g('LOJA_2'),ABERTURA_2:g('ABERTURA_2'),FECHADO_2:g('FECHADO_2'),SAIDA_2:g('SAIDA_2'),
+        TOTAL_LOJA_2:tl2,TOTAL_LOJA:tTotal(),DIESEL_CHEGADA:g('DIESEL_CHEGADA'),CHEGADA_VEICULO_CD:g('CHEGADA_VEICULO_CD'),
+        PONTO_OFF_MOT:g('PONTO_OFF_MOT'),PONTO_OFF_MOTO:g('PONTO_OFF_MOT'),HORA_TOTAL_MOTORISTA:htot,
+        DATA_CHEGADA:g('DATA_CHEGADA'),KM_CHEGADA:g('KM_CHEGADA'),KM_PERCORRIDO:kmP,
+        OBSERVACOES:g('OBSERVACOES'),_por:currentUser.email,_em:serverTimestamp()
       };
-
-      try {
-        let docId = v.fid;
-        if (!docId) {
-          const prefix = docIdPrefixData(v.DATA||hojeISO());
-          docId = `${prefix}_${payload.OP}_${(payload.VEICULO||'').replace(/\s/g,'_')||Date.now()}`;
-        }
-        await setDoc(doc(db,'lancamentos', docId), payload, {merge:true});
-        const params = encodeURIComponent(JSON.stringify(payload));
-        await fetch(WEBHOOK_URL_SUP + '?dados=' + params, {method:'GET', mode:'no-cors'});
-        const msg = document.getElementById('msg-ok-sup');
-        if(msg){ msg.style.display='block'; setTimeout(()=>{ msg.style.display='none'; },2500); }
-        if (btnSalvar) { btnSalvar.disabled=false; btnSalvar.textContent='💾 Salvar'; }
-      } catch(e) { 
-        alert('Erro: '+e.message); 
-        if (btnSalvar) { btnSalvar.disabled=false; btnSalvar.textContent='💾 Salvar'; }
-      }
+      try{
+        let docId=v.fid;
+        if(!docId){const prefix=docIdPrefixData(v.DATA||hojeISO());docId=`${prefix}_${payload.OP}_${(payload.VEICULO||'').replace(/\s/g,'_')||Date.now()}`;}
+        await setDoc(doc(db,'lancamentos',docId),payload,{merge:true});
+        const params=encodeURIComponent(JSON.stringify(payload));
+        await fetch(WEBHOOK_URL_SUP+'?dados='+params,{method:'GET',mode:'no-cors'});
+        const msg=document.getElementById('msg-ok-sup');
+        if(msg){msg.style.display='block';setTimeout(()=>{msg.style.display='none';},2500);}
+        if(btnSalvar){btnSalvar.disabled=false;btnSalvar.textContent='💾 Salvar';}
+      }catch(e){alert('Erro: '+e.message);if(btnSalvar){btnSalvar.disabled=false;btnSalvar.textContent='💾 Salvar';}}
     };
 
+    window.fecharDetalhe=()=>{$('overlay').style.display='none';};
 
-    window.fecharDetalhe = () => { $('overlay').style.display='none'; };
-
-    // ── PAINEL DE USUÁRIOS ────────────────────────────────────────────
+    // ── USUÁRIOS ──────────────────────────────────────────────────────
     function renderUsuarios() {
-      const pendentes  = todosUsers.filter(u=>u.status==='pendente');
-      const ativos     = todosUsers.filter(u=>u.status==='ativo');
-      const bloqueados = todosUsers.filter(u=>u.status==='bloqueado');
-      $('sec-usuarios').innerHTML = `
-        ${pendentes.length ? `
-          <div class="usr-grupo-title">⏳ Aguardando aprovação (${pendentes.length})</div>
-          ${pendentes.map(u => cardUsuario(u, true)).join('')}
-        ` : ''}
-        <div class="usr-grupo-title" style="margin-top:${pendentes.length?'24px':'0'}">✅ Ativos (${ativos.length})</div>
-        ${ativos.length ? ativos.map(u => cardUsuario(u, false)).join('') : '<div class="usr-empty">Nenhum usuário ativo.</div>'}
-        ${bloqueados.length ? `
-          <div class="usr-grupo-title" style="margin-top:24px">🚫 Bloqueados (${bloqueados.length})</div>
-          ${bloqueados.map(u => cardUsuario(u, false)).join('')}
-        ` : ''}
-      `;
-    }
-
-    function cardUsuario(u, isPendente) {
-      const opCor = OP_CORES[u.op]||'#6b8099';
-      const ativo = u.status==='ativo';
-      const bloq  = u.status==='bloqueado';
-      const pend  = u.status==='pendente';
-      const acoes = pend ? `
-        <button class="btn-usr btn-aprovar" onclick="aprovarUsuario('${u.uid}')">✅ Aprovar</button>
-        <button class="btn-usr btn-rejeitar" onclick="excluirUsuario('${u.uid}','${u.nome}')">❌ Rejeitar</button>
-      ` : ativo ? `
-        <button class="btn-usr btn-bloquear" onclick="bloquearUsuario('${u.uid}')">🚫 Bloquear</button>
-        <button class="btn-usr btn-excluir"  onclick="excluirUsuario('${u.uid}','${u.nome}')">🗑 Excluir</button>
-      ` : `
-        <button class="btn-usr btn-aprovar"  onclick="aprovarUsuario('${u.uid}')">✅ Reativar</button>
-        <button class="btn-usr btn-excluir"  onclick="excluirUsuario('${u.uid}','${u.nome}')">🗑 Excluir</button>
-      `;
-      return `<div class="usr-card">
-        <div class="usr-info">
-          <div class="usr-nome">${u.nome||'—'}</div>
-          <div class="usr-email">${u.email||'—'}</div>
-          <div class="usr-tags">
-            <span class="op-pill" style="background:${opCor}20;color:${opCor};font-size:12px">${u.op||'—'}</span>
-            <span class="cargo-tag">${u.cargo||'—'}</span>
-            <span class="status-tag st-${u.status}">${u.status}</span>
-          </div>
+      const pendentes=todosUsers.filter(u=>u.status==='pendente');
+      const ativos=todosUsers.filter(u=>u.status==='ativo');
+      const bloqueados=todosUsers.filter(u=>u.status==='bloqueado');
+      $('sec-usuarios').innerHTML=`
+        <div id="sec-permissoes"></div>
+        <div style="margin-top:32px;margin-bottom:16px;padding-top:24px;border-top:1px solid var(--bord)">
+          <div class="usr-grupo-title">👥 Gerenciamento de Usuários</div>
         </div>
-        <div class="usr-acoes">${acoes}</div>
-      </div>`;
+        ${pendentes.length?`<div class="usr-grupo-title">⏳ Aguardando aprovação (${pendentes.length})</div>${pendentes.map(u=>cardUsuario(u,true)).join('')}`:''}
+        <div class="usr-grupo-title" style="margin-top:${pendentes.length?'24px':'0'}">✅ Ativos (${ativos.length})</div>
+        ${ativos.length?ativos.map(u=>cardUsuario(u,false)).join(''):'<div class="usr-empty">Nenhum usuário ativo.</div>'}
+        ${bloqueados.length?`<div class="usr-grupo-title" style="margin-top:24px">🚫 Bloqueados (${bloqueados.length})</div>${bloqueados.map(u=>cardUsuario(u,false)).join('')}`:''}
+      `;
+      renderPermissoes();
     }
 
-    window.aprovarUsuario  = async uid => { await updateDoc(doc(db,'usuarios',uid), {status:'ativo'}); };
-    window.bloquearUsuario = async uid => { await updateDoc(doc(db,'usuarios',uid), {status:'bloqueado'}); };
-    window.excluirUsuario  = async (uid, nome) => {
-      if (!confirm(`Excluir ${nome}?`)) return;
-      await deleteDoc(doc(db,'usuarios',uid));
-    };
+    function cardUsuario(u,isPendente) {
+      const opCor=OP_CORES[u.op]||'#6b8099';
+      const ativo=u.status==='ativo'; const bloq=u.status==='bloqueado'; const pend=u.status==='pendente';
+      const acoes=pend?`<button class="btn-usr btn-aprovar" onclick="aprovarUsuario('${u.uid}')">✅ Aprovar</button><button class="btn-usr btn-rejeitar" onclick="excluirUsuario('${u.uid}','${u.nome}')">❌ Rejeitar</button>`:ativo?`<button class="btn-usr btn-bloquear" onclick="bloquearUsuario('${u.uid}')">🚫 Bloquear</button><button class="btn-usr btn-excluir" onclick="excluirUsuario('${u.uid}','${u.nome}')">🗑 Excluir</button>`:`<button class="btn-usr btn-aprovar" onclick="aprovarUsuario('${u.uid}')">✅ Reativar</button><button class="btn-usr btn-excluir" onclick="excluirUsuario('${u.uid}','${u.nome}')">🗑 Excluir</button>`;
+      return `<div class="usr-card"><div class="usr-info"><div class="usr-nome">${u.nome||'—'}</div><div class="usr-email">${u.email||'—'}</div><div class="usr-tags"><span class="op-pill" style="background:${opCor}20;color:${opCor};font-size:12px">${u.op||'—'}</span><span class="cargo-tag">${u.cargo||'—'}</span><span class="status-tag st-${u.status}">${u.status}</span></div></div><div class="usr-acoes">${acoes}</div></div>`;
+    }
+
+    window.aprovarUsuario  = async uid=>{await updateDoc(doc(db,'usuarios',uid),{status:'ativo'});};
+    window.bloquearUsuario = async uid=>{await updateDoc(doc(db,'usuarios',uid),{status:'bloqueado'});};
+    window.excluirUsuario  = async(uid,nome)=>{if(!confirm(`Excluir ${nome}?`)) return; await deleteDoc(doc(db,'usuarios',uid));};
   </script>
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-    :root{
-      --bg:#080f18;--surf:#0e1a28;--card:#11202f;--bord:#1b2e42;
-      --acc:#f0a500;--text:#dde6ef;--muted:#5a7a99;--danger:#e85555;
-    }
+    :root{--bg:#080f18;--surf:#0e1a28;--card:#11202f;--bord:#1b2e42;--acc:#f0a500;--text:#dde6ef;--muted:#5a7a99;--danger:#e85555;}
     html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif}
     .mono{font-family:'JetBrains Mono',monospace;font-size:13px}
     #login-tela{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
@@ -646,10 +525,8 @@
     .op-c{flex:1;background:var(--card);border:1px solid var(--bord);border-radius:10px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between}
     .op-n{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px}
     .op-cnt{font-family:'JetBrains Mono',monospace;font-size:22px}
-    .op-ls .op-n,.op-ls .op-cnt{color:#e84040}
-    .op-tl .op-n,.op-tl .op-cnt{color:#1a7a4a}
-    .op-ht .op-n,.op-ht .op-cnt{color:#2ed573}
-    .op-cv .op-n,.op-cv .op-cnt{color:#f5d800}
+    .op-ls .op-n,.op-ls .op-cnt{color:#e84040}.op-tl .op-n,.op-tl .op-cnt{color:#1a7a4a}
+    .op-ht .op-n,.op-ht .op-cnt{color:#2ed573}.op-cv .op-n,.op-cv .op-cnt{color:#f5d800}
     .filtros{display:flex;align-items:center;gap:8px;padding:14px 24px 0;flex-wrap:wrap}
     .filtros-l{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted)}
     .btn-op{padding:5px 14px;border-radius:20px;border:1px solid var(--bord);background:transparent;color:var(--muted);cursor:pointer;font-size:13px;font-weight:600;transition:all .15s}
@@ -664,13 +541,11 @@
     .col-placa{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px}
     .st-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
     .empty-row{text-align:center;padding:60px;color:var(--muted)}
-    /* PROGRAMAÇÃO */
     #sec-programacao{display:none;padding:20px 24px 40px}
     .date-picker-wrap{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
     .btn-data{padding:8px 16px;background:var(--card);border:1px solid var(--bord);border-radius:8px;color:var(--muted);font-size:13px;font-family:'Barlow Condensed',sans-serif;font-weight:600;cursor:pointer;transition:all .2s}
     .btn-data:hover{border-color:var(--acc);color:var(--acc)}
     .btn-data-ativa{background:#4da6ff20!important;border-color:#4da6ff!important;color:#4da6ff!important}
-    /* USUÁRIOS */
     #sec-usuarios{display:none;padding:20px 24px 40px}
     .usr-grupo-title{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding-bottom:10px;border-bottom:1px solid var(--bord);margin-bottom:12px}
     .usr-card{background:var(--card);border:1px solid var(--bord);border-radius:12px;padding:16px;margin-bottom:10px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
@@ -679,16 +554,13 @@
     .usr-tags{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
     .cargo-tag{font-size:11px;background:#ffffff10;border:1px solid var(--bord);border-radius:4px;padding:2px 8px;color:var(--muted)}
     .status-tag{font-size:11px;border-radius:4px;padding:2px 8px;font-weight:600}
-    .st-ativo{background:#34d39920;color:#34d399}
-    .st-pendente{background:#fbbf2420;color:#fbbf24}
-    .st-bloqueado{background:#e8555520;color:var(--danger)}
+    .st-ativo{background:#34d39920;color:#34d399}.st-pendente{background:#fbbf2420;color:#fbbf24}.st-bloqueado{background:#e8555520;color:var(--danger)}
     .usr-acoes{display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0}
     .btn-usr{padding:7px 14px;border-radius:8px;border:1px solid var(--bord);background:none;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s;white-space:nowrap}
     .btn-aprovar{color:#34d399;border-color:#34d39940}.btn-aprovar:hover{background:#34d39920}
     .btn-rejeitar,.btn-excluir{color:var(--danger);border-color:#e8555540}.btn-rejeitar:hover,.btn-excluir:hover{background:#e8555520}
     .btn-bloquear{color:#fbbf24;border-color:#fbbf2440}.btn-bloquear:hover{background:#fbbf2420}
     .usr-empty{color:var(--muted);font-size:14px;padding:12px 0}
-    /* OVERLAY */
     #overlay{display:none;position:fixed;inset:0;background:#000a;z-index:200;align-items:flex-end;justify-content:center}
     .det-panel{background:var(--surf);border:1px solid var(--bord);border-radius:20px 20px 0 0;width:100%;max-width:600px;max-height:85vh;overflow-y:auto;padding:28px}
     .det-hd{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px}
@@ -701,13 +573,7 @@
     .det-fg label{display:block;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
     .det-input{width:100%;background:var(--bg);border:1px solid var(--bord);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px;font-family:'Barlow',sans-serif;outline:none}
     .det-input:focus{border-color:var(--acc)}
-    @media(max-width:768px){
-      .resumo{grid-template-columns:repeat(2,1fr)}
-      .ops-bar{flex-wrap:wrap}
-      .brand span{display:none}
-      #relogio{font-size:18px}
-      .tab-wrap{padding:12px}
-    }
+    @media(max-width:768px){.resumo{grid-template-columns:repeat(2,1fr)}.ops-bar{flex-wrap:wrap}.brand span{display:none}#relogio{font-size:18px}.tab-wrap{padding:12px}}
   </style>
 </head>
 <body>
@@ -732,15 +598,14 @@
     </div>
   </div>
   <div class="abas">
-    <button id="aba-dashboard"    class="aba-btn ativa" onclick="irAba('dashboard')">📊 Dashboard</button>
-    <button id="aba-programacao"  class="aba-btn"       onclick="irAba('programacao')">📅 Programação</button>
-    <button id="aba-usuarios"     class="aba-btn"       onclick="irAba('usuarios')">
+    <button id="aba-dashboard"   class="aba-btn ativa" onclick="irAba('dashboard')">📊 Dashboard</button>
+    <button id="aba-programacao" class="aba-btn"       onclick="irAba('programacao')">📅 Programação</button>
+    <button id="aba-usuarios"    class="aba-btn"       onclick="irAba('usuarios')">
       👥 Usuários
       <span id="badge-pendentes" class="badge-n"></span>
     </button>
   </div>
 
-  <!-- DASHBOARD -->
   <div id="sec-dashboard">
     <div class="resumo">
       <div class="cs"><div class="num n-total"  id="c-total">0</div><div class="lbl">Total hoje</div></div>
@@ -768,21 +633,17 @@
       </div>
       <div class="cnt-label" id="cnt-label">—</div>
       <table>
-        <thead>
-          <tr><th>OP</th><th>Veículo</th><th>Motorista</th><th>Destino</th><th>Ponto ON</th><th>Saída CD</th><th>Chegada CD</th><th>KM</th><th>Status</th></tr>
-        </thead>
-        <tbody id="tbody"><tr><td colspan="8" class="empty-row">Aguardando lançamentos...</td></tr></tbody>
+        <thead><tr><th>OP</th><th>Veículo</th><th>Motorista</th><th>Destino</th><th>Ponto ON</th><th>Saída CD</th><th>Chegada CD</th><th>KM</th><th>Status</th></tr></thead>
+        <tbody id="tbody"><tr><td colspan="9" class="empty-row">Aguardando lançamentos...</td></tr></tbody>
       </table>
     </div>
   </div>
 
-  <!-- PROGRAMAÇÃO -->
   <div id="sec-programacao">
     <div class="date-picker-wrap" id="date-picker-sup"></div>
     <div id="prog-lista-sup"><div style="text-align:center;padding:40px;color:var(--muted)">Selecione uma data acima</div></div>
   </div>
 
-  <!-- USUÁRIOS -->
   <div id="sec-usuarios"></div>
 </div>
 
@@ -800,7 +661,6 @@
   </div>
 </div>
 
-<!-- LEGENDA MODAL -->
 <div id="legenda-overlay" onclick="if(event.target===this)fecharLegenda()" style="display:none;position:fixed;inset:0;background:#000a;z-index:500;align-items:center;justify-content:center">
   <div style="background:#0e1a28;border:1px solid #1b2e42;border-radius:16px;padding:28px;width:90%;max-width:400px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
