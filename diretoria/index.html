@@ -37,7 +37,6 @@
 
     const $ = id => document.getElementById(id);
 
-    // ── Utilitários de data ──────────────────────────────────────────
     function nowBR() {
       return new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Sao_Paulo'}));
     }
@@ -57,7 +56,6 @@
       return `${dd}/${mm} (${dias[d.getDay()]})`;
     }
 
-    // ── INIT ─────────────────────────────────────────────────────────
     function iniciar() {
       iniciarRelogio();
       escutarLancamentos();
@@ -74,7 +72,6 @@
       tick(); setInterval(tick,1000);
     }
 
-    // ── ESCUTAS FIRESTORE ─────────────────────────────────────────────
     function escutarLancamentos() {
       onSnapshot(
         query(collection(db,'lancamentos'), where('DATA','==',hojeISO())),
@@ -94,7 +91,6 @@
       });
     }
 
-    // ── ABAS ─────────────────────────────────────────────────────────
     window.irAba = (aba) => {
       abaPainel = aba;
       ['dashboard','programacao','usuarios'].forEach(a => {
@@ -110,7 +106,6 @@
       }
     };
 
-    // ── DASHBOARD ─────────────────────────────────────────────────────
     function calcStatus(v) {
       const agora  = new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Sao_Paulo'}));
       const hMin   = agora.getHours()*60 + agora.getMinutes();
@@ -119,14 +114,10 @@
 
       if (v.CHEGADA_VEICULO_CD && v.KM_CHEGADA) return {key:'concluido', label:'Concluído',   cor:'#34d399'};
       if (v.SAIDA_1 || v.ABERTURA_1)            return {key:'rota',      label:'Em rota',     cor:'#fbbf24'};
-
-      // Em trânsito: só se for hoje E hora da saída já passou
       const saidaMin = tMin(v.SAIDA_VEICULO_CD);
       if (isHoje && saidaMin !== null && hMin >= saidaMin) return {key:'transito', label:'Em trânsito', cor:'#f97316'};
-
       const pontoOnMin = tMin(v.PONTO_ON);
       if (isHoje && pontoOnMin !== null && hMin >= pontoOnMin) return {key:'iniciado', label:'Iniciado', cor:'#4da6ff'};
-
       return {key:'pendente', label:'Pendente', cor:'#6b8099'};
     }
 
@@ -178,7 +169,6 @@
       }).join('');
     }
 
-    // ── PROGRAMAÇÃO ───────────────────────────────────────────────────
     function renderDatePicker() {
       const c = $('date-picker'); if(!c) return;
       c.innerHTML = [0,1,2,3].map(n => {
@@ -234,7 +224,6 @@
       }).join('')}</tbody></table>`;
     }
 
-    // ── DETALHE (só leitura) ──────────────────────────────────────────
     window.abrirDetalhe = (fid, origem) => {
       const lista = origem==='prog' ? veiculosProg : todosLanc;
       const v = lista.find(x=>x.fid===fid);
@@ -288,7 +277,6 @@
 
     window.fecharDetalhe = () => { $('overlay').style.display='none'; };
 
-    // ── USUÁRIOS (só leitura) ─────────────────────────────────────────
     function renderUsuarios() {
       const pendentes  = todosUsers.filter(u=>u.status==='pendente');
       const ativos     = todosUsers.filter(u=>u.status==='ativo');
@@ -325,7 +313,6 @@
       </div>`;
     }
 
-    // Inicia direto sem login
     iniciar();
 
     window.mostrarLegenda = () => { document.getElementById('legenda-overlay').style.display='flex'; };
@@ -337,16 +324,48 @@
       --bg:#080f18;--surf:#0e1a28;--card:#11202f;--bord:#1b2e42;
       --acc:#f0a500;--text:#dde6ef;--muted:#5a7a99;--danger:#e85555;
     }
-    html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif}
+
+    /* ── Layout base ── */
+    html,body{
+      height:100vh;
+      overflow:hidden;
+      background:var(--bg);
+      color:var(--text);
+      font-family:'Barlow',sans-serif;
+    }
+
     .mono{font-family:'JetBrains Mono',monospace;font-size:13px}
-    .topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:var(--surf);border-bottom:1px solid var(--bord);position:sticky;top:0;z-index:100}
+
+    /* ── Cabeçalho fixo ── */
+    /* topbar ≈ 53px + abas ≈ 45px = 98px */
+    .site-header{
+      position:fixed;
+      top:0; left:0; right:0;
+      z-index:100;
+      background:var(--surf);
+    }
+    .topbar{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:14px 24px;
+      border-bottom:1px solid var(--bord);
+    }
     .brand{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:22px;color:var(--acc)}
     .brand span{color:var(--muted);font-weight:400;font-size:13px;margin-left:8px}
     #relogio{font-family:'JetBrains Mono',monospace;font-size:22px;color:var(--acc)}
-    .abas{display:flex;padding:0 24px;background:var(--surf);border-bottom:1px solid var(--bord)}
+    .abas{display:flex;padding:0 24px;border-bottom:1px solid var(--bord)}
     .aba-btn{padding:12px 20px;background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);cursor:pointer;font-size:14px;font-weight:500;transition:color .2s}
     .aba-btn.ativa{color:var(--acc);border-bottom-color:var(--acc)}
     .aba-btn:hover{color:var(--text)}
+
+    /* ── Conteúdo com scroll ── */
+    .site-content{
+      position:fixed;
+      top:98px; left:0; right:0; bottom:0;
+      overflow-y:auto;
+      -webkit-overflow-scrolling:touch;
+    }
+
+    /* ── Dashboard ── */
     .resumo{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:20px 24px 0}
     .cs{background:var(--card);border:1px solid var(--bord);border-radius:12px;padding:18px}
     .cs .num{font-family:'Barlow Condensed',sans-serif;font-size:44px;font-weight:900;line-height:1}
@@ -374,11 +393,15 @@
     .col-placa{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px}
     .st-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
     .empty-row{text-align:center;padding:60px;color:var(--muted)}
+
+    /* ── Programação ── */
     #sec-programacao{display:none;padding:20px 24px 40px}
     .date-picker-wrap{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
     .btn-data{padding:8px 16px;background:var(--card);border:1px solid var(--bord);border-radius:8px;color:var(--muted);font-size:13px;font-family:'Barlow Condensed',sans-serif;font-weight:600;cursor:pointer;transition:all .2s}
     .btn-data:hover{border-color:var(--acc);color:var(--acc)}
     .btn-data-ativa{background:#4da6ff20!important;border-color:#4da6ff!important;color:#4da6ff!important}
+
+    /* ── Usuários ── */
     #sec-usuarios{display:none;padding:20px 24px 40px}
     .usr-grupo-title{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding-bottom:10px;border-bottom:1px solid var(--bord);margin-bottom:12px}
     .usr-card{background:var(--card);border:1px solid var(--bord);border-radius:12px;padding:16px;margin-bottom:10px}
@@ -390,6 +413,8 @@
     .st-ativo{background:#34d39920;color:#34d399}
     .st-pendente{background:#fbbf2420;color:#fbbf24}
     .st-bloqueado{background:#e8555520;color:var(--danger)}
+
+    /* ── Overlay detalhe ── */
     #overlay{display:none;position:fixed;inset:0;background:#000a;z-index:200;align-items:flex-end;justify-content:center}
     .det-panel{background:var(--surf);border:1px solid var(--bord);border-radius:20px 20px 0 0;width:100%;max-width:600px;max-height:85vh;overflow-y:auto;padding:28px}
     .det-hd{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px}
@@ -400,6 +425,7 @@
     .det-sec{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding:14px 0 6px;border-bottom:1px solid var(--bord);margin-bottom:8px}
     .det-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #0d1e2e}
     .det-l{font-size:12px;color:var(--muted)}.det-v{font-size:13px;font-weight:500;text-align:right;max-width:65%}
+
     @media(max-width:768px){
       .resumo{grid-template-columns:repeat(2,1fr)}
       .ops-bar{flex-wrap:wrap}
@@ -411,59 +437,66 @@
 </head>
 <body>
 
-<div class="topbar">
-  <div class="brand">FROTA <span>Painel de Acompanhamento</span></div>
-  <button onclick="mostrarLegenda()" style="background:none;border:1px solid var(--bord);color:var(--muted);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px">?</button>
-  <span id="relogio">00:00</span>
-</div>
-
-<div class="abas">
-  <button id="aba-dashboard"   class="aba-btn ativa" onclick="irAba('dashboard')">📊 Dashboard</button>
-  <button id="aba-programacao" class="aba-btn"       onclick="irAba('programacao')">📅 Programação</button>
-  <button id="aba-usuarios"    class="aba-btn"       onclick="irAba('usuarios')">👥 Usuários</button>
-</div>
-
-<!-- DASHBOARD -->
-<div id="sec-dashboard">
-  <div class="resumo">
-    <div class="cs"><div class="num n-total"  id="c-total">0</div><div class="lbl">Total hoje</div></div>
-    <div class="cs"><div class="num n-ok"     id="c-concluido">0</div><div class="lbl">Concluídos</div></div>
-    <div class="cs"><div class="num n-rota"   id="c-rota">0</div><div class="lbl">Em operação</div></div>
-    <div class="cs"><div class="num n-pend"   id="c-pendente">0</div><div class="lbl">Pendentes</div></div>
+<!-- CABEÇALHO FIXO -->
+<div class="site-header">
+  <div class="topbar">
+    <div class="brand">FROTA <span>Painel de Acompanhamento</span></div>
+    <button onclick="mostrarLegenda()" style="background:none;border:1px solid var(--bord);color:var(--muted);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px">?</button>
+    <span id="relogio">00:00</span>
   </div>
-  <div class="ops-bar">
-    <div class="op-c op-ls"><span class="op-n">LS</span><span class="op-cnt" id="op-LS">0</span></div>
-    <div class="op-c op-tl"><span class="op-n">TL</span><span class="op-cnt" id="op-TL">0</span></div>
-    <div class="op-c op-ht"><span class="op-n">HT</span><span class="op-cnt" id="op-HT">0</span></div>
-    <div class="op-c op-cv"><span class="op-n">CV</span><span class="op-cnt" id="op-CV">0</span></div>
-  </div>
-  <div class="filtros">
-    <span class="filtros-l">Operação:</span>
-    <button class="btn-op ativo" data-op="TODAS" onclick="setFiltroOp('TODAS')">Todas</button>
-    <button class="btn-op" data-op="LS" onclick="setFiltroOp('LS')" style="color:#4da6ff;border-color:#4da6ff">LS</button>
-    <button class="btn-op" data-op="TL" onclick="setFiltroOp('TL')" style="color:#ff8c42;border-color:#ff8c42">TL</button>
-    <button class="btn-op" data-op="HT" onclick="setFiltroOp('HT')" style="color:#a78bfa;border-color:#a78bfa">HT</button>
-    <button class="btn-op" data-op="CV" onclick="setFiltroOp('CV')" style="color:#34d399;border-color:#34d399">CV</button>
-  </div>
-  <div class="tab-wrap">
-    <div class="cnt-label" id="cnt-label">—</div>
-    <table>
-      <thead>
-        <tr><th>OP</th><th>Veículo</th><th>Motorista</th><th>Destino</th><th>Ponto ON</th><th>Saída CD</th><th>Chegada CD</th><th>KM</th><th>Status</th></tr>
-      </thead>
-      <tbody id="tbody"><tr><td colspan="8" class="empty-row">Carregando...</td></tr></tbody>
-    </table>
+  <div class="abas">
+    <button id="aba-dashboard"   class="aba-btn ativa" onclick="irAba('dashboard')">📊 Dashboard</button>
+    <button id="aba-programacao" class="aba-btn"       onclick="irAba('programacao')">📅 Programação</button>
+    <button id="aba-usuarios"    class="aba-btn"       onclick="irAba('usuarios')">👥 Usuários</button>
   </div>
 </div>
 
-<!-- PROGRAMAÇÃO -->
-<div id="sec-programacao">
-  <div class="date-picker-wrap" id="date-picker"></div>
-  <div id="prog-lista"><div style="text-align:center;padding:40px;color:var(--muted)">Selecione uma data acima</div></div>
-</div>
+<!-- CONTEÚDO COM SCROLL -->
+<div class="site-content">
 
-<!-- USUÁRIOS -->
-<div id="sec-usuarios"></div>
+  <!-- DASHBOARD -->
+  <div id="sec-dashboard">
+    <div class="resumo">
+      <div class="cs"><div class="num n-total"  id="c-total">0</div><div class="lbl">Total hoje</div></div>
+      <div class="cs"><div class="num n-ok"     id="c-concluido">0</div><div class="lbl">Concluídos</div></div>
+      <div class="cs"><div class="num n-rota"   id="c-rota">0</div><div class="lbl">Em operação</div></div>
+      <div class="cs"><div class="num n-pend"   id="c-pendente">0</div><div class="lbl">Pendentes</div></div>
+    </div>
+    <div class="ops-bar">
+      <div class="op-c op-ls"><span class="op-n">LS</span><span class="op-cnt" id="op-LS">0</span></div>
+      <div class="op-c op-tl"><span class="op-n">TL</span><span class="op-cnt" id="op-TL">0</span></div>
+      <div class="op-c op-ht"><span class="op-n">HT</span><span class="op-cnt" id="op-HT">0</span></div>
+      <div class="op-c op-cv"><span class="op-n">CV</span><span class="op-cnt" id="op-CV">0</span></div>
+    </div>
+    <div class="filtros">
+      <span class="filtros-l">Operação:</span>
+      <button class="btn-op ativo" data-op="TODAS" onclick="setFiltroOp('TODAS')">Todas</button>
+      <button class="btn-op" data-op="LS" onclick="setFiltroOp('LS')" style="color:#4da6ff;border-color:#4da6ff">LS</button>
+      <button class="btn-op" data-op="TL" onclick="setFiltroOp('TL')" style="color:#ff8c42;border-color:#ff8c42">TL</button>
+      <button class="btn-op" data-op="HT" onclick="setFiltroOp('HT')" style="color:#a78bfa;border-color:#a78bfa">HT</button>
+      <button class="btn-op" data-op="CV" onclick="setFiltroOp('CV')" style="color:#34d399;border-color:#34d399">CV</button>
+    </div>
+    <div class="tab-wrap">
+      <div class="cnt-label" id="cnt-label">—</div>
+      <table>
+        <thead>
+          <tr><th>OP</th><th>Veículo</th><th>Motorista</th><th>Destino</th><th>Ponto ON</th><th>Saída CD</th><th>Chegada CD</th><th>KM</th><th>Status</th></tr>
+        </thead>
+        <tbody id="tbody"><tr><td colspan="8" class="empty-row">Carregando...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- PROGRAMAÇÃO -->
+  <div id="sec-programacao">
+    <div class="date-picker-wrap" id="date-picker"></div>
+    <div id="prog-lista"><div style="text-align:center;padding:40px;color:var(--muted)">Selecione uma data acima</div></div>
+  </div>
+
+  <!-- USUÁRIOS -->
+  <div id="sec-usuarios"></div>
+
+</div>
 
 <!-- OVERLAY DETALHE -->
 <div id="overlay" onclick="if(event.target===this)fecharDetalhe()">
@@ -480,8 +513,7 @@
   </div>
 </div>
 
-
-<!-- LEGENDA MODAL -->
+<!-- LEGENDA -->
 <div id="legenda-overlay" onclick="if(event.target===this)fecharLegenda()" style="display:none;position:fixed;inset:0;background:#000a;z-index:500;align-items:center;justify-content:center">
   <div style="background:#0e1a28;border:1px solid #1b2e42;border-radius:16px;padding:28px;width:90%;max-width:400px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
