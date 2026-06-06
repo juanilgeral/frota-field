@@ -46,27 +46,16 @@
 
     const $ = id => document.getElementById(id);
 
-    // Mapeamento de campos para labels legíveis
     const CAMPOS_LABELS = {
-      MOTORISTA: 'Motorista', DESTINO: 'Destino / Rota',
-      PONTO_ON: 'Ponto ON', PREVISAO_REFEICAO: 'Prev. Refeição',
-      SAIDA_VEICULO_CD: 'Saída Veículo CD', SM: 'SM',
-      DATA_CARRG: 'Data Carregamento', KM_SAIDA: 'KM Saída',
-      LOJA_1: 'Prev. 1ª Loja', ABERTURA_1: 'Abertura 1ª Loja',
-      FECHADO_1: 'Fechado 1ª Loja', SAIDA_1: 'Saída 1ª Loja',
-      TOTAL_LOJA_1: 'Total 1ª Loja', LOJA_2: 'Prev. 2ª Loja',
-      ABERTURA_2: 'Abertura 2ª Loja', FECHADO_2: 'Fechado 2ª Loja',
-      SAIDA_2: 'Saída 2ª Loja', TOTAL_LOJA_2: 'Total 2ª Loja',
-      TOTAL_LOJA: 'Total Loja', DIESEL_CHEGADA: 'Diesel Chegada',
-      CHEGADA_VEICULO_CD: 'Chegada Veículo CD',
-      PONTO_OFF_MOT: 'Ponto OFF Motorista', PONTO_OFF_MOTO: 'Ponto OFF Moto',
-      HORA_TOTAL_MOTORISTA: 'Hora Total Motorista',
-      DATA_CHEGADA: 'Data Chegada', KM_CHEGADA: 'KM Chegada',
-      KM_PERCORRIDO: 'KM Percorrido', OBSERVACOES: 'Observações',
-      ALMOCO: 'Almoço'
+      MOTORISTA:'Motorista',DESTINO:'Destino / Rota',PONTO_ON:'Ponto ON',PREVISAO_REFEICAO:'Prev. Refeição',
+      SAIDA_VEICULO_CD:'Saída Veículo CD',SM:'SM',DATA_CARRG:'Data Carregamento',KM_SAIDA:'KM Saída',
+      LOJA_1:'Prev. 1ª Loja',ABERTURA_1:'Abertura 1ª Loja',FECHADO_1:'Fechado 1ª Loja',SAIDA_1:'Saída 1ª Loja',
+      TOTAL_LOJA_1:'Total 1ª Loja',LOJA_2:'Prev. 2ª Loja',ABERTURA_2:'Abertura 2ª Loja',FECHADO_2:'Fechado 2ª Loja',
+      SAIDA_2:'Saída 2ª Loja',TOTAL_LOJA_2:'Total 2ª Loja',TOTAL_LOJA:'Total Loja',DIESEL_CHEGADA:'Diesel Chegada',
+      CHEGADA_VEICULO_CD:'Chegada Veículo CD',PONTO_OFF_MOT:'Ponto OFF Motorista',PONTO_OFF_MOTO:'Ponto OFF Moto',
+      HORA_TOTAL_MOTORISTA:'Hora Total Motorista',DATA_CHEGADA:'Data Chegada',KM_CHEGADA:'KM Chegada',
+      KM_PERCORRIDO:'KM Percorrido',OBSERVACOES:'Observações',ALMOCO:'Almoço'
     };
-
-    // Campos protegidos — não podem ser limpos
     const CAMPOS_PROTEGIDOS = ['DATA','DIA','OP','VEICULO','fid','_novo','_por','_em','_origem'];
 
     function nowBR() { return new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Sao_Paulo'})); }
@@ -95,7 +84,6 @@
     const toMin = t => { if(!t) return 0; const [h,m]=t.split(':').map(Number); return h*60+m; };
     const toHM  = m => `${String(Math.floor(m/60)%24).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`;
 
-    // ── Disponibilidade ──────────────────────────────────────────────
     async function buscarSituacaoMotorista(motorista, dataLancamento) {
       if (!motorista) return null;
       try {
@@ -147,7 +135,6 @@
     window.mostrarLegenda = () => { document.getElementById('legenda-overlay').style.display='flex'; };
     window.fecharLegenda  = () => { document.getElementById('legenda-overlay').style.display='none'; };
 
-    // ── AUTH ─────────────────────────────────────────────────────────
     let authResolvido = false;
     onAuthStateChanged(auth, user => {
       if (user) {
@@ -183,7 +170,6 @@
       tick(); setInterval(tick,1000);
     }
 
-    // ── PERMISSÕES ────────────────────────────────────────────────────
     function escutarPermissoes() {
       onSnapshot(doc(db,'configuracoes','permissoes'), snap => {
         if (snap.exists()) { const d=snap.data(); permissoes={LS:!!d.LS,TL:!!d.TL,HT:!!d.HT,CV:!!d.CV}; }
@@ -218,7 +204,6 @@
       await setDoc(doc(db,'configuracoes','permissoes'), permissoes, {merge:true});
     };
 
-    // ── ESCUTAS ───────────────────────────────────────────────────────
     function escutarLancamentos() {
       onSnapshot(query(collection(db,'lancamentos'), where('DATA','==',hojeISO())), snap => {
         todosLanc = []; snap.forEach(d => todosLanc.push({fid:d.id,...d.data()}));
@@ -232,7 +217,6 @@
       });
     }
 
-    // ── ABAS ─────────────────────────────────────────────────────────
     window.irAba = (aba) => {
       abaPainel = aba;
       ['dashboard','usuarios','programacao'].forEach(a => {
@@ -249,7 +233,6 @@
       if(badge) { badge.textContent=n||''; badge.style.display=n?'inline-block':'none'; }
     }
 
-    // ── DASHBOARD ─────────────────────────────────────────────────────
     function calcStatus(v) {
       const agora = new Date(new Date().toLocaleString('en-US', {timeZone:'America/Sao_Paulo'}));
       const hMin  = agora.getHours()*60+agora.getMinutes();
@@ -301,7 +284,6 @@
       }).join('');
     }
 
-    // ── PROGRAMAÇÃO ───────────────────────────────────────────────────
     function renderDatePickerSup() {
       const c=$('date-picker-sup'); if(!c) return;
       c.innerHTML=[0,1,2,3].map(n=>{
@@ -340,7 +322,6 @@
       }).join('')}</tbody></table>`;
     }
 
-    // ── DETALHE / FORMULÁRIO ──────────────────────────────────────────
     const WEBHOOK_URL_SUP='https://script.google.com/macros/s/AKfycbxZxi8vPx1gAoys7W1Poy88BwNf7Zq9tIhmFO6h511kHQhplGPcdkmGdwQ7afqzzcTsCA/exec';
     const MOTORISTAS_SUP=['ALEXANDRE','DANIEL','DEVANILSO','HERIBERTO','SÉRGIO','ANTÔNIO','CAMARA','NEVES','VALDIR','ROGERIO','EDILSON','SÉRGIO SILVA','GILMAR','SANDRO','LUIZ','MEDEIROS','NOGUEIRA','RICARDO','EDUARDO','CLAUDINEI','DUARTE','ROBERTO','ROSENDO','ANDERSON','ISAÍAS','RENÊ','ADRIANO','JOEL','WALMIR','ANDRÉ','VAGNER','CÉLIO','OLIVEIRA','MARCIO','ROBSON','THIAGO','CARLOS','MARCELO','VITOR','EDSON','LEONARDO','EDILEI'];
     const VEICULOS_SUP=['063 LBW 8156','064 LUV 9296','065 KZQ 9648','066 LUB 1400','067 LUX 9063','068 LSN 1702','074 LKK 6551','075 KUT 8573','088 KYP 3601','091 KPE 2252','092 LSF 4199','093 KVF 3715','094 KQT 1919','095 LTJ 4440','096 KQS 2672','097 LRX 4831','098 LRX 4828','099 LRX 4830','100 LRX 4829','101 LRX 4832','102 LRT 4821','103 KWB 9779','104 LRC 3089','105 KPU 7450','106 LSZ 5959','107 LRR 8757','108 LSM 7748','109 LSM 7749','110 LSM 7750','111 KRO 8527','112 KRO 8528','113 KXU 6988','114 KXU 6989','115 KXW 7716','116 LSQ 6092','117 KRR 2728','118 LSQ 6093','119 LRP 8A18','120 LTF 9726','121 KRZ 8143','122 DPF 7I23','123 ATJ3F42','124 ATI4G85','125 OWO2F73'];
@@ -415,11 +396,8 @@
       if (v.MOTORISTA) atualizarDispSup();
     }
 
-    // ── LIMPAR CAMPOS ─────────────────────────────────────────────────
     window.abrirLimparCampos = () => {
       const v = dadosDetalheSup; if (!v || !v.fid) return;
-
-      // Pega campos preenchidos (exceto protegidos)
       const camposPreenchidos = Object.entries(v)
         .filter(([campo, valor]) => {
           if (CAMPOS_PROTEGIDOS.includes(campo)) return false;
@@ -429,10 +407,7 @@
         .map(([campo, valor]) => ({ campo, valor, label: CAMPOS_LABELS[campo] || campo }))
         .filter(item => item.label);
 
-      if (!camposPreenchidos.length) {
-        alert('Nenhum campo preenchido para limpar.');
-        return;
-      }
+      if (!camposPreenchidos.length) { alert('Nenhum campo preenchido para limpar.'); return; }
 
       $('limpar-lista').innerHTML = camposPreenchidos.map(item => `
         <label style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--card);border:1px solid var(--bord);border-radius:8px;cursor:pointer;margin-bottom:6px">
@@ -443,7 +418,6 @@
           </div>
         </label>
       `).join('');
-
       $('limpar-overlay').style.display='flex';
     };
 
@@ -457,33 +431,24 @@
       const v = dadosDetalheSup; if (!v || !v.fid) return;
       const checkboxes = $('limpar-lista').querySelectorAll('input[type=checkbox]:checked');
       if (!checkboxes.length) { alert('Selecione ao menos um campo.'); return; }
-
       const camposParaLimpar = Array.from(checkboxes).map(cb => cb.value);
       const confirmMsg = `Limpar ${camposParaLimpar.length} campo(s)?\n\n${camposParaLimpar.map(c => CAMPOS_LABELS[c]||c).join(', ')}`;
       if (!confirm(confirmMsg)) return;
-
       const btn = $('btn-confirmar-limpar');
       btn.disabled=true; btn.textContent='Limpando...';
-
       try {
-        // 1. Zera no Firestore
         const updates = {};
         camposParaLimpar.forEach(campo => { updates[campo] = ''; });
         if (updates.PONTO_OFF_MOT !== undefined) updates.PONTO_OFF_MOTO = '';
         if (updates.PONTO_OFF_MOTO !== undefined) updates.PONTO_OFF_MOT = '';
         await updateDoc(doc(db,'lancamentos',v.fid), updates);
-
-        // 2. Chama webhook para zerar na planilha também
         const payload = { docId: v.fid, campos: camposParaLimpar };
         const params = encodeURIComponent(JSON.stringify(payload));
         await fetch(WEBHOOK_URL_SUP + '?limpar=' + params, { method: 'GET', mode: 'no-cors' });
-
         $('limpar-overlay').style.display='none';
         fecharDetalhe();
         alert(`✅ ${camposParaLimpar.length} campo(s) limpo(s) com sucesso!`);
-      } catch(e) {
-        alert('Erro ao limpar: ' + e.message);
-      }
+      } catch(e) { alert('Erro ao limpar: ' + e.message); }
       btn.disabled=false; btn.textContent='✅ Confirmar limpeza';
     };
 
@@ -531,7 +496,6 @@
 
     window.fecharDetalhe=()=>{$('overlay').style.display='none';};
 
-    // ── USUÁRIOS ──────────────────────────────────────────────────────
     function renderUsuarios() {
       const pendentes=todosUsers.filter(u=>u.status==='pendente');
       const ativos=todosUsers.filter(u=>u.status==='ativo');
@@ -563,9 +527,13 @@
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     :root{--bg:#080f18;--surf:#0e1a28;--card:#11202f;--bord:#1b2e42;--acc:#f0a500;--text:#dde6ef;--muted:#5a7a99;--danger:#e85555;}
-    html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif}
+
+    /* ── Layout base ── */
+    html,body{height:100vh;overflow:hidden;background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif}
     .mono{font-family:'JetBrains Mono',monospace;font-size:13px}
-    #login-tela{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+
+    /* ── Login (fora do layout fixo) ── */
+    #login-tela{display:flex;align-items:center;justify-content:center;height:100vh;overflow-y:auto;padding:24px}
     .auth-box{background:var(--surf);border:1px solid var(--bord);border-radius:16px;padding:44px 32px;width:100%;max-width:380px}
     .logo{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:36px;color:var(--acc)}
     .logo-sub{font-size:11px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-bottom:32px}
@@ -575,19 +543,30 @@
     .fg input:focus{border-color:var(--acc)}
     .btn-primary{width:100%;margin-top:6px;padding:14px;background:var(--acc);color:#080f18;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;cursor:pointer}
     .erro{display:none;background:#e8555520;border:1px solid var(--danger);border-radius:8px;padding:10px 14px;color:var(--danger);font-size:13px;margin-top:12px;text-align:center}
-    #dashboard-tela{display:none}
-    .topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:var(--surf);border-bottom:1px solid var(--bord)}
+
+    /* ── Dashboard ── */
+    #dashboard-tela{display:none;height:100vh;overflow:hidden;}
+
+    /* ── Cabeçalho fixo ── */
+    /* topbar ≈ 53px + abas ≈ 45px = 98px */
+    .site-header{position:fixed;top:0;left:0;right:0;z-index:100;background:var(--surf);}
+    .topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;border-bottom:1px solid var(--bord);}
     .brand{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:22px;color:var(--acc)}
     .brand span{color:var(--muted);font-weight:400;font-size:13px;margin-left:8px}
     .topbar-r{display:flex;align-items:center;gap:16px}
     #relogio{font-family:'JetBrains Mono',monospace;font-size:22px;color:var(--acc)}
     .btn-logout{background:none;border:1px solid var(--bord);color:var(--muted);padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px}
     .btn-logout:hover{color:var(--danger);border-color:var(--danger)}
-    .abas{display:flex;gap:0;padding:0 24px;background:var(--surf);border-bottom:1px solid var(--bord)}
+    .abas{display:flex;gap:0;padding:0 24px;border-bottom:1px solid var(--bord)}
     .aba-btn{padding:12px 20px;background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);cursor:pointer;font-size:14px;font-weight:500;position:relative;transition:color .2s}
     .aba-btn.ativa{color:var(--acc);border-bottom-color:var(--acc)}
     .aba-btn:hover{color:var(--text)}
     .badge-n{display:none;position:absolute;top:8px;right:6px;background:var(--danger);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700}
+
+    /* ── Conteúdo com scroll ── */
+    .site-content{position:fixed;top:98px;left:0;right:0;bottom:0;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+
+    /* ── Dashboard ── */
     .resumo{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:20px 24px 0}
     .cs{background:var(--card);border:1px solid var(--bord);border-radius:12px;padding:18px}
     .cs .num{font-family:'Barlow Condensed',sans-serif;font-size:44px;font-weight:900;line-height:1}
@@ -613,11 +592,15 @@
     .col-placa{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px}
     .st-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
     .empty-row{text-align:center;padding:60px;color:var(--muted)}
+
+    /* ── Programação ── */
     #sec-programacao{display:none;padding:20px 24px 40px}
     .date-picker-wrap{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
     .btn-data{padding:8px 16px;background:var(--card);border:1px solid var(--bord);border-radius:8px;color:var(--muted);font-size:13px;font-family:'Barlow Condensed',sans-serif;font-weight:600;cursor:pointer;transition:all .2s}
     .btn-data:hover{border-color:var(--acc);color:var(--acc)}
     .btn-data-ativa{background:#4da6ff20!important;border-color:#4da6ff!important;color:#4da6ff!important}
+
+    /* ── Usuários ── */
     #sec-usuarios{display:none;padding:20px 24px 40px}
     .usr-grupo-title{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding-bottom:10px;border-bottom:1px solid var(--bord);margin-bottom:12px}
     .usr-card{background:var(--card);border:1px solid var(--bord);border-radius:12px;padding:16px;margin-bottom:10px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
@@ -633,6 +616,8 @@
     .btn-rejeitar,.btn-excluir{color:var(--danger);border-color:#e8555540}.btn-rejeitar:hover,.btn-excluir:hover{background:#e8555520}
     .btn-bloquear{color:#fbbf24;border-color:#fbbf2440}.btn-bloquear:hover{background:#fbbf2420}
     .usr-empty{color:var(--muted);font-size:14px;padding:12px 0}
+
+    /* ── Overlay detalhe ── */
     #overlay{display:none;position:fixed;inset:0;background:#000a;z-index:200;align-items:flex-end;justify-content:center}
     .det-panel{background:var(--surf);border:1px solid var(--bord);border-radius:20px 20px 0 0;width:100%;max-width:600px;max-height:85vh;overflow-y:auto;padding:28px}
     .det-hd{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px}
@@ -645,16 +630,26 @@
     .det-fg label{display:block;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
     .det-input{width:100%;background:var(--bg);border:1px solid var(--bord);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px;font-family:'Barlow',sans-serif;outline:none}
     .det-input:focus{border-color:var(--acc)}
-    /* MODAL LIMPAR */
+
+    /* ── Modal limpar ── */
     #limpar-overlay{display:none;position:fixed;inset:0;background:#000c;z-index:300;align-items:center;justify-content:center;padding:20px}
     .limpar-panel{background:var(--surf);border:1px solid var(--bord);border-radius:16px;width:100%;max-width:480px;max-height:80vh;display:flex;flex-direction:column}
     .limpar-header{padding:20px 24px;border-bottom:1px solid var(--bord);display:flex;justify-content:space-between;align-items:center}
     .limpar-body{padding:16px 24px;overflow-y:auto;flex:1}
     .limpar-footer{padding:16px 24px;border-top:1px solid var(--bord);display:flex;flex-direction:column;gap:8px}
-    @media(max-width:768px){.resumo{grid-template-columns:repeat(2,1fr)}.ops-bar{flex-wrap:wrap}.brand span{display:none}#relogio{font-size:18px}.tab-wrap{padding:12px}}
+
+    @media(max-width:768px){
+      .resumo{grid-template-columns:repeat(2,1fr)}
+      .ops-bar{flex-wrap:wrap}
+      .brand span{display:none}
+      #relogio{font-size:18px}
+      .tab-wrap{padding:12px}
+    }
   </style>
 </head>
 <body>
+
+<!-- LOGIN -->
 <div id="login-tela">
   <div class="auth-box">
     <div class="logo">FROTA</div>
@@ -666,63 +661,73 @@
   </div>
 </div>
 
+<!-- DASHBOARD -->
 <div id="dashboard-tela">
-  <div class="topbar">
-    <div class="brand">FROTA <span>Supervisão · <span id="sup-nome"></span></span></div>
-    <div class="topbar-r">
-      <span id="relogio">00:00</span>
-      <button onclick="mostrarLegenda()" style="background:none;border:1px solid var(--bord);color:var(--muted);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px;margin-right:6px">?</button>
-      <button class="btn-logout" onclick="fazerLogout()">Sair</button>
-    </div>
-  </div>
-  <div class="abas">
-    <button id="aba-dashboard"   class="aba-btn ativa" onclick="irAba('dashboard')">📊 Dashboard</button>
-    <button id="aba-programacao" class="aba-btn"       onclick="irAba('programacao')">📅 Programação</button>
-    <button id="aba-usuarios"    class="aba-btn"       onclick="irAba('usuarios')">
-      👥 Usuários <span id="badge-pendentes" class="badge-n"></span>
-    </button>
-  </div>
 
-  <div id="sec-dashboard">
-    <div class="resumo">
-      <div class="cs"><div class="num n-total"  id="c-total">0</div><div class="lbl">Total hoje</div></div>
-      <div class="cs"><div class="num n-ok"     id="c-concluido">0</div><div class="lbl">Concluídos</div></div>
-      <div class="cs"><div class="num n-rota"   id="c-rota">0</div><div class="lbl">Em operação</div></div>
-      <div class="cs"><div class="num n-pend"   id="c-pendente">0</div><div class="lbl">Pendentes</div></div>
-    </div>
-    <div class="ops-bar">
-      <div class="op-c op-ls"><span class="op-n">LS</span><span class="op-cnt" id="op-LS">0</span></div>
-      <div class="op-c op-tl"><span class="op-n">TL</span><span class="op-cnt" id="op-TL">0</span></div>
-      <div class="op-c op-ht"><span class="op-n">HT</span><span class="op-cnt" id="op-HT">0</span></div>
-      <div class="op-c op-cv"><span class="op-n">CV</span><span class="op-cnt" id="op-CV">0</span></div>
-    </div>
-    <div class="filtros">
-      <span class="filtros-l">Operação:</span>
-      <button class="btn-op ativo" data-op="TODAS" onclick="setFiltroOp('TODAS')">Todas</button>
-      <button class="btn-op" data-op="LS" onclick="setFiltroOp('LS')" style="color:#4da6ff;border-color:#4da6ff">LS</button>
-      <button class="btn-op" data-op="TL" onclick="setFiltroOp('TL')" style="color:#ff8c42;border-color:#ff8c42">TL</button>
-      <button class="btn-op" data-op="HT" onclick="setFiltroOp('HT')" style="color:#a78bfa;border-color:#a78bfa">HT</button>
-      <button class="btn-op" data-op="CV" onclick="setFiltroOp('CV')" style="color:#34d399;border-color:#34d399">CV</button>
-    </div>
-    <div class="tab-wrap">
-      <div style="padding:14px 0 0">
-        <button onclick="abrirNovoSup()" style="display:flex;align-items:center;justify-content:center;width:100%;padding:12px;background:transparent;border:2px dashed var(--bord);border-radius:10px;color:var(--acc);font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:600;cursor:pointer;margin-bottom:14px" onmouseover="this.style.borderColor='var(--acc)'" onmouseout="this.style.borderColor='var(--bord)'">+ Novo lançamento</button>
+  <!-- CABEÇALHO FIXO -->
+  <div class="site-header">
+    <div class="topbar">
+      <div class="brand">FROTA <span>Supervisão · <span id="sup-nome"></span></span></div>
+      <div class="topbar-r">
+        <span id="relogio">00:00</span>
+        <button onclick="mostrarLegenda()" style="background:none;border:1px solid var(--bord);color:var(--muted);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px;margin-right:6px">?</button>
+        <button class="btn-logout" onclick="fazerLogout()">Sair</button>
       </div>
-      <div class="cnt-label" id="cnt-label">—</div>
-      <table>
-        <thead><tr><th>OP</th><th>Veículo</th><th>Motorista</th><th>Destino</th><th>Ponto ON</th><th>Saída CD</th><th>Chegada CD</th><th>KM</th><th>Status</th></tr></thead>
-        <tbody id="tbody"><tr><td colspan="9" class="empty-row">Aguardando lançamentos...</td></tr></tbody>
-      </table>
+    </div>
+    <div class="abas">
+      <button id="aba-dashboard"   class="aba-btn ativa" onclick="irAba('dashboard')">📊 Dashboard</button>
+      <button id="aba-programacao" class="aba-btn"       onclick="irAba('programacao')">📅 Programação</button>
+      <button id="aba-usuarios"    class="aba-btn"       onclick="irAba('usuarios')">
+        👥 Usuários <span id="badge-pendentes" class="badge-n"></span>
+      </button>
     </div>
   </div>
 
-  <div id="sec-programacao">
-    <div class="date-picker-wrap" id="date-picker-sup"></div>
-    <div id="prog-lista-sup"><div style="text-align:center;padding:40px;color:var(--muted)">Selecione uma data acima</div></div>
-  </div>
+  <!-- CONTEÚDO COM SCROLL -->
+  <div class="site-content">
 
-  <div id="sec-usuarios"></div>
-</div>
+    <div id="sec-dashboard">
+      <div class="resumo">
+        <div class="cs"><div class="num n-total"  id="c-total">0</div><div class="lbl">Total hoje</div></div>
+        <div class="cs"><div class="num n-ok"     id="c-concluido">0</div><div class="lbl">Concluídos</div></div>
+        <div class="cs"><div class="num n-rota"   id="c-rota">0</div><div class="lbl">Em operação</div></div>
+        <div class="cs"><div class="num n-pend"   id="c-pendente">0</div><div class="lbl">Pendentes</div></div>
+      </div>
+      <div class="ops-bar">
+        <div class="op-c op-ls"><span class="op-n">LS</span><span class="op-cnt" id="op-LS">0</span></div>
+        <div class="op-c op-tl"><span class="op-n">TL</span><span class="op-cnt" id="op-TL">0</span></div>
+        <div class="op-c op-ht"><span class="op-n">HT</span><span class="op-cnt" id="op-HT">0</span></div>
+        <div class="op-c op-cv"><span class="op-n">CV</span><span class="op-cnt" id="op-CV">0</span></div>
+      </div>
+      <div class="filtros">
+        <span class="filtros-l">Operação:</span>
+        <button class="btn-op ativo" data-op="TODAS" onclick="setFiltroOp('TODAS')">Todas</button>
+        <button class="btn-op" data-op="LS" onclick="setFiltroOp('LS')" style="color:#4da6ff;border-color:#4da6ff">LS</button>
+        <button class="btn-op" data-op="TL" onclick="setFiltroOp('TL')" style="color:#ff8c42;border-color:#ff8c42">TL</button>
+        <button class="btn-op" data-op="HT" onclick="setFiltroOp('HT')" style="color:#a78bfa;border-color:#a78bfa">HT</button>
+        <button class="btn-op" data-op="CV" onclick="setFiltroOp('CV')" style="color:#34d399;border-color:#34d399">CV</button>
+      </div>
+      <div class="tab-wrap">
+        <div style="padding:14px 0 0">
+          <button onclick="abrirNovoSup()" style="display:flex;align-items:center;justify-content:center;width:100%;padding:12px;background:transparent;border:2px dashed var(--bord);border-radius:10px;color:var(--acc);font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:600;cursor:pointer;margin-bottom:14px" onmouseover="this.style.borderColor='var(--acc)'" onmouseout="this.style.borderColor='var(--bord)'">+ Novo lançamento</button>
+        </div>
+        <div class="cnt-label" id="cnt-label">—</div>
+        <table>
+          <thead><tr><th>OP</th><th>Veículo</th><th>Motorista</th><th>Destino</th><th>Ponto ON</th><th>Saída CD</th><th>Chegada CD</th><th>KM</th><th>Status</th></tr></thead>
+          <tbody id="tbody"><tr><td colspan="9" class="empty-row">Aguardando lançamentos...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="sec-programacao">
+      <div class="date-picker-wrap" id="date-picker-sup"></div>
+      <div id="prog-lista-sup"><div style="text-align:center;padding:40px;color:var(--muted)">Selecione uma data acima</div></div>
+    </div>
+
+    <div id="sec-usuarios"></div>
+
+  </div><!-- /site-content -->
+</div><!-- /dashboard-tela -->
 
 <!-- OVERLAY DETALHE -->
 <div id="overlay" onclick="if(event.target===this)fecharDetalhe()">
@@ -739,7 +744,7 @@
   </div>
 </div>
 
-<!-- MODAL LIMPAR CAMPOS -->
+<!-- MODAL LIMPAR -->
 <div id="limpar-overlay" onclick="if(event.target===this)fecharLimpar()">
   <div class="limpar-panel">
     <div class="limpar-header">
