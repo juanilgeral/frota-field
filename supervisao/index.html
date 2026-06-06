@@ -46,16 +46,36 @@
 
     const $ = id => document.getElementById(id);
 
-    function nowBR() {
-      return new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Sao_Paulo'}));
-    }
+    // Mapeamento de campos para labels legíveis
+    const CAMPOS_LABELS = {
+      MOTORISTA: 'Motorista', DESTINO: 'Destino / Rota',
+      PONTO_ON: 'Ponto ON', PREVISAO_REFEICAO: 'Prev. Refeição',
+      SAIDA_VEICULO_CD: 'Saída Veículo CD', SM: 'SM',
+      DATA_CARRG: 'Data Carregamento', KM_SAIDA: 'KM Saída',
+      LOJA_1: 'Prev. 1ª Loja', ABERTURA_1: 'Abertura 1ª Loja',
+      FECHADO_1: 'Fechado 1ª Loja', SAIDA_1: 'Saída 1ª Loja',
+      TOTAL_LOJA_1: 'Total 1ª Loja', LOJA_2: 'Prev. 2ª Loja',
+      ABERTURA_2: 'Abertura 2ª Loja', FECHADO_2: 'Fechado 2ª Loja',
+      SAIDA_2: 'Saída 2ª Loja', TOTAL_LOJA_2: 'Total 2ª Loja',
+      TOTAL_LOJA: 'Total Loja', DIESEL_CHEGADA: 'Diesel Chegada',
+      CHEGADA_VEICULO_CD: 'Chegada Veículo CD',
+      PONTO_OFF_MOT: 'Ponto OFF Motorista', PONTO_OFF_MOTO: 'Ponto OFF Moto',
+      HORA_TOTAL_MOTORISTA: 'Hora Total Motorista',
+      DATA_CHEGADA: 'Data Chegada', KM_CHEGADA: 'KM Chegada',
+      KM_PERCORRIDO: 'KM Percorrido', OBSERVACOES: 'Observações',
+      ALMOCO: 'Almoço'
+    };
+
+    // Campos protegidos — não podem ser limpos
+    const CAMPOS_PROTEGIDOS = ['DATA','DIA','OP','VEICULO','fid','_novo','_por','_em','_origem'];
+
+    function nowBR() { return new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Sao_Paulo'})); }
     function hojeISO() {
       const d = nowBR();
       return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getFullYear()).slice(-2)}`;
     }
     function dataFutura(n) {
-      const d = nowBR();
-      d.setDate(d.getDate() + n);
+      const d = nowBR(); d.setDate(d.getDate() + n);
       return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getFullYear()).slice(-2)}`;
     }
     function labelData(iso) {
@@ -64,10 +84,7 @@
       const dias = ['dom','seg','ter','qua','qui','sex','sáb'];
       return `${dd}/${mm} (${dias[d.getDay()]})`;
     }
-    function docIdPrefixData(iso) {
-      const [dd,mm,aa] = iso.split('/');
-      return `20${aa}${mm}${dd}`;
-    }
+    function docIdPrefixData(iso) { const [dd,mm,aa] = iso.split('/'); return `20${aa}${mm}${dd}`; }
     function diaAnterior(iso) {
       const [dd,mm,aa] = iso.split('/');
       const d = new Date(2000+parseInt(aa), parseInt(mm)-1, parseInt(dd));
@@ -91,8 +108,7 @@
           if (snap.empty) continue;
           let emOperacao = false, melhorPoff = null;
           snap.forEach(d => {
-            const dado = d.data();
-            const poff = dado.PONTO_OFF_MOT || dado.PONTO_OFF_MOTO || '';
+            const dado = d.data(); const poff = dado.PONTO_OFF_MOT || dado.PONTO_OFF_MOTO || '';
             if (!poff) { emOperacao = true; }
             else { if (!melhorPoff || toMin(poff) > toMin(melhorPoff)) melhorPoff = poff; }
           });
@@ -104,7 +120,7 @@
     }
 
     async function atualizarDispSup() {
-      const sel   = document.getElementById('sf-MOTORISTA');
+      const sel = document.getElementById('sf-MOTORISTA');
       const aviso = document.getElementById('aviso-disp-sup');
       if (!sel || !aviso) return;
       const motorista = sel.value;
@@ -137,8 +153,7 @@
       if (user) {
         authResolvido = true;
         if (!SUPERVISORES.includes(user.email)) { signOut(auth); erroLogin('Acesso não autorizado.'); return; }
-        currentUser = user;
-        mostrarDashboard();
+        currentUser = user; mostrarDashboard();
       } else {
         if (authResolvido) { mostrarLogin(); }
         else { setTimeout(() => { if (!authResolvido) mostrarLogin(); }, 1500); }
@@ -146,9 +161,7 @@
     });
 
     window.fazerLogin = async () => {
-      const email = $('l-email').value.trim();
-      const senha = $('l-senha').value;
-      const btn   = $('btn-login');
+      const email = $('l-email').value.trim(); const senha = $('l-senha').value; const btn = $('btn-login');
       btn.disabled=true; btn.textContent='Entrando...';
       try { await signInWithEmailAndPassword(auth, email, senha); }
       catch { erroLogin('Email ou senha inválidos.'); btn.disabled=false; btn.textContent='ENTRAR'; }
@@ -173,12 +186,8 @@
     // ── PERMISSÕES ────────────────────────────────────────────────────
     function escutarPermissoes() {
       onSnapshot(doc(db,'configuracoes','permissoes'), snap => {
-        if (snap.exists()) {
-          const d = snap.data();
-          permissoes = { LS: !!d.LS, TL: !!d.TL, HT: !!d.HT, CV: !!d.CV };
-        } else {
-          permissoes = { LS: false, TL: false, HT: false, CV: false };
-        }
+        if (snap.exists()) { const d=snap.data(); permissoes={LS:!!d.LS,TL:!!d.TL,HT:!!d.HT,CV:!!d.CV}; }
+        else { permissoes={LS:false,TL:false,HT:false,CV:false}; }
         renderPermissoes();
       });
     }
@@ -187,11 +196,10 @@
       const el = $('sec-permissoes'); if(!el) return;
       el.innerHTML = `
         <div class="usr-grupo-title" style="margin-bottom:16px">🔐 Permissão de Novo Lançamento por Operação</div>
-        <p style="font-size:13px;color:var(--muted);margin-bottom:20px">Quando ON, o auxiliar/encarregado da operação pode criar novos lançamentos no app. Quando OFF, só pode editar os que já existem.</p>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:20px">Quando ON, o auxiliar/encarregado pode criar novos lançamentos. Quando OFF, só edita os existentes.</p>
         <div style="display:flex;flex-direction:column;gap:12px">
           ${['LS','TL','HT','CV'].map(op => {
-            const cor = OP_CORES[op]||'#6b8099';
-            const ativo = permissoes[op];
+            const cor=OP_CORES[op]||'#6b8099'; const ativo=permissoes[op];
             return `<div style="display:flex;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--bord);border-radius:12px;padding:16px 20px">
               <div style="display:flex;align-items:center;gap:12px">
                 <span style="background:${cor}20;color:${cor};padding:4px 14px;border-radius:6px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px">${op}</span>
@@ -202,28 +210,24 @@
               </button>
             </div>`;
           }).join('')}
-        </div>
-      `;
+        </div>`;
     }
 
     window.togglePermissao = async (op) => {
-      const novoValor = !permissoes[op];
-      permissoes[op] = novoValor;
+      const novoValor = !permissoes[op]; permissoes[op] = novoValor;
       await setDoc(doc(db,'configuracoes','permissoes'), permissoes, {merge:true});
     };
 
-    // ── ESCUTAS FIRESTORE ─────────────────────────────────────────────
+    // ── ESCUTAS ───────────────────────────────────────────────────────
     function escutarLancamentos() {
       onSnapshot(query(collection(db,'lancamentos'), where('DATA','==',hojeISO())), snap => {
-        todosLanc = [];
-        snap.forEach(d => todosLanc.push({fid:d.id,...d.data()}));
+        todosLanc = []; snap.forEach(d => todosLanc.push({fid:d.id,...d.data()}));
         renderCards(); renderTabela();
       });
     }
     function escutarUsuarios() {
       onSnapshot(collection(db,'usuarios'), snap => {
-        todosUsers = [];
-        snap.forEach(d => todosUsers.push({uid:d.id,...d.data()}));
+        todosUsers = []; snap.forEach(d => todosUsers.push({uid:d.id,...d.data()}));
         renderUsuarios(); atualizarBadgePendentes();
       });
     }
@@ -232,11 +236,11 @@
     window.irAba = (aba) => {
       abaPainel = aba;
       ['dashboard','usuarios','programacao'].forEach(a => {
-        const btn = $('aba-'+a); const sec = $('sec-'+a);
+        const btn=$('aba-'+a); const sec=$('sec-'+a);
         if(btn) btn.classList.toggle('ativa', a===aba);
         if(sec) sec.style.display = a===aba ? 'block' : 'none';
       });
-      if (aba==='programacao') { dataProg = dataProg||dataFutura(1); renderDatePickerSup(); carregarProgSup(); }
+      if (aba==='programacao') { dataProg=dataProg||dataFutura(1); renderDatePickerSup(); carregarProgSup(); }
     };
 
     function atualizarBadgePendentes() {
@@ -297,7 +301,7 @@
       }).join('');
     }
 
-    // ── ABA PROGRAMAÇÃO ───────────────────────────────────────────────
+    // ── PROGRAMAÇÃO ───────────────────────────────────────────────────
     function renderDatePickerSup() {
       const c=$('date-picker-sup'); if(!c) return;
       c.innerHTML=[0,1,2,3].map(n=>{
@@ -313,9 +317,7 @@
       if (unsubProg) { unsubProg(); unsubProg=null; }
       const q=query(collection(db,'lancamentos'), where('DATA','==',dataProg));
       unsubProg=onSnapshot(q, snap=>{
-        veiculosProg=[];
-        snap.forEach(d=>veiculosProg.push({fid:d.id,...d.data()}));
-        renderProgListaSup();
+        veiculosProg=[]; snap.forEach(d=>veiculosProg.push({fid:d.id,...d.data()})); renderProgListaSup();
       });
     }
 
@@ -325,18 +327,13 @@
       let filtrado=[...veiculosProg];
       if (filtroOp!=='TODAS') filtrado=filtrado.filter(v=>v.OP===filtroOp);
       if (!filtrado.length) { lista.innerHTML=btnNovo+`<div style="text-align:center;padding:40px;color:var(--muted)">📅 Nenhum lançamento para ${labelData(dataProg)}.</div>`; return; }
-      lista.innerHTML=btnNovo+`<table><thead><tr>
-        <th>OP</th><th>Veículo</th><th>Motorista</th><th>Destino</th>
-        <th>Ponto ON</th><th>Saída CD</th><th>Chegada CD</th><th>KM</th><th>Status</th>
-      </tr></thead><tbody>${filtrado.map(v=>{
+      lista.innerHTML=btnNovo+`<table><thead><tr><th>OP</th><th>Veículo</th><th>Motorista</th><th>Destino</th><th>Ponto ON</th><th>Saída CD</th><th>Chegada CD</th><th>KM</th><th>Status</th></tr></thead><tbody>${filtrado.map(v=>{
         const cor=OP_CORES[v.OP]||'#6b8099';
         return `<tr class="tr-data" onclick="abrirDetalhe('${v.fid}','prog')">
           <td><span class="op-pill" style="background:${cor}20;color:${cor}">${v.OP||'—'}</span></td>
-          <td class="col-placa">${v.VEICULO||'—'}</td>
-          <td>${v.MOTORISTA||'—'}</td>
+          <td class="col-placa">${v.VEICULO||'—'}</td><td>${v.MOTORISTA||'—'}</td>
           <td style="font-size:12px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.DESTINO||'—'}</td>
-          <td class="mono">${v.PONTO_ON||'—'}</td>
-          <td class="mono">${v.SAIDA_VEICULO_CD||'—'}</td>
+          <td class="mono">${v.PONTO_ON||'—'}</td><td class="mono">${v.SAIDA_VEICULO_CD||'—'}</td>
           <td class="mono">—</td><td class="mono">—</td>
           <td><span class="st-dot" style="background:#4da6ff"></span>Programado</td>
         </tr>`;
@@ -409,11 +406,83 @@
         ${fgs('OBSERVACOES','Observações','textarea',v.OBSERVACOES)}
         <button id="btn-salvar-sup" onclick="salvarSup()" style="width:100%;margin-top:16px;padding:14px;background:#f0a500;color:#080f18;border:none;border-radius:8px;font-size:16px;font-weight:700;cursor:pointer">💾 Salvar</button>
         <div id="msg-ok-sup" style="display:none;margin-top:10px;padding:10px;background:#00c9a720;border:1px solid #00c9a7;border-radius:8px;color:#00c9a7;text-align:center">✅ Salvo!</div>
-        <button onclick="apagarLancamentoSup('${v.fid}')" style="width:100%;margin-top:10px;padding:10px;background:none;border:1px solid #e8555560;color:#e85555;border-radius:8px;cursor:pointer;font-size:13px${!v.fid?';display:none':''}">🗑 Apagar lançamento</button>
+        ${!v._novo && v.fid ? `
+        <button onclick="abrirLimparCampos()" style="width:100%;margin-top:10px;padding:10px;background:none;border:1px solid #f0a50060;color:#f0a500;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">🧹 Limpar campos</button>
+        <button onclick="apagarLancamentoSup('${v.fid}')" style="width:100%;margin-top:8px;padding:10px;background:none;border:1px solid #e8555560;color:#e85555;border-radius:8px;cursor:pointer;font-size:13px">🗑 Apagar lançamento</button>
+        ` : ''}
       `;
       $('overlay').style.display='flex';
       if (v.MOTORISTA) atualizarDispSup();
     }
+
+    // ── LIMPAR CAMPOS ─────────────────────────────────────────────────
+    window.abrirLimparCampos = () => {
+      const v = dadosDetalheSup; if (!v || !v.fid) return;
+
+      // Pega campos preenchidos (exceto protegidos)
+      const camposPreenchidos = Object.entries(v)
+        .filter(([campo, valor]) => {
+          if (CAMPOS_PROTEGIDOS.includes(campo)) return false;
+          if (valor === null || valor === undefined || valor === '') return false;
+          return true;
+        })
+        .map(([campo, valor]) => ({ campo, valor, label: CAMPOS_LABELS[campo] || campo }))
+        .filter(item => item.label);
+
+      if (!camposPreenchidos.length) {
+        alert('Nenhum campo preenchido para limpar.');
+        return;
+      }
+
+      $('limpar-lista').innerHTML = camposPreenchidos.map(item => `
+        <label style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--card);border:1px solid var(--bord);border-radius:8px;cursor:pointer;margin-bottom:6px">
+          <input type="checkbox" value="${item.campo}" style="width:16px;height:16px;cursor:pointer;accent-color:var(--danger)">
+          <div>
+            <div style="font-size:14px;font-weight:600">${item.label}</div>
+            <div style="font-size:12px;color:var(--muted)">${String(item.valor).substring(0,40)}</div>
+          </div>
+        </label>
+      `).join('');
+
+      $('limpar-overlay').style.display='flex';
+    };
+
+    window.fecharLimpar = () => { $('limpar-overlay').style.display='none'; };
+
+    window.selecionarTodosLimpar = (marcar) => {
+      $('limpar-lista').querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = marcar);
+    };
+
+    window.confirmarLimpar = async () => {
+      const v = dadosDetalheSup; if (!v || !v.fid) return;
+      const checkboxes = $('limpar-lista').querySelectorAll('input[type=checkbox]:checked');
+      if (!checkboxes.length) { alert('Selecione ao menos um campo.'); return; }
+
+      const camposParaLimpar = Array.from(checkboxes).map(cb => cb.value);
+      const confirmMsg = `Limpar ${camposParaLimpar.length} campo(s)?\n\n${camposParaLimpar.map(c => CAMPOS_LABELS[c]||c).join(', ')}`;
+      if (!confirm(confirmMsg)) return;
+
+      const btn = $('btn-confirmar-limpar');
+      btn.disabled=true; btn.textContent='Limpando...';
+
+      try {
+        // Monta objeto com campos zerados
+        const updates = {};
+        camposParaLimpar.forEach(campo => { updates[campo] = ''; });
+        // Se limpar PONTO_OFF_MOT, limpa também PONTO_OFF_MOTO
+        if (updates.PONTO_OFF_MOT !== undefined) updates.PONTO_OFF_MOTO = '';
+        if (updates.PONTO_OFF_MOTO !== undefined) updates.PONTO_OFF_MOT = '';
+
+        await updateDoc(doc(db,'lancamentos',v.fid), updates);
+
+        $('limpar-overlay').style.display='none';
+        fecharDetalhe();
+        alert(`✅ ${camposParaLimpar.length} campo(s) limpo(s) com sucesso!`);
+      } catch(e) {
+        alert('Erro ao limpar: ' + e.message);
+      }
+      btn.disabled=false; btn.textContent='✅ Confirmar limpeza';
+    };
 
     window.salvarSup=async()=>{
       const btnSalvar=document.getElementById('btn-salvar-sup');
@@ -479,7 +548,7 @@
 
     function cardUsuario(u,isPendente) {
       const opCor=OP_CORES[u.op]||'#6b8099';
-      const ativo=u.status==='ativo'; const bloq=u.status==='bloqueado'; const pend=u.status==='pendente';
+      const ativo=u.status==='ativo'; const pend=u.status==='pendente';
       const acoes=pend?`<button class="btn-usr btn-aprovar" onclick="aprovarUsuario('${u.uid}')">✅ Aprovar</button><button class="btn-usr btn-rejeitar" onclick="excluirUsuario('${u.uid}','${u.nome}')">❌ Rejeitar</button>`:ativo?`<button class="btn-usr btn-bloquear" onclick="bloquearUsuario('${u.uid}')">🚫 Bloquear</button><button class="btn-usr btn-excluir" onclick="excluirUsuario('${u.uid}','${u.nome}')">🗑 Excluir</button>`:`<button class="btn-usr btn-aprovar" onclick="aprovarUsuario('${u.uid}')">✅ Reativar</button><button class="btn-usr btn-excluir" onclick="excluirUsuario('${u.uid}','${u.nome}')">🗑 Excluir</button>`;
       return `<div class="usr-card"><div class="usr-info"><div class="usr-nome">${u.nome||'—'}</div><div class="usr-email">${u.email||'—'}</div><div class="usr-tags"><span class="op-pill" style="background:${opCor}20;color:${opCor};font-size:12px">${u.op||'—'}</span><span class="cargo-tag">${u.cargo||'—'}</span><span class="status-tag st-${u.status}">${u.status}</span></div></div><div class="usr-acoes">${acoes}</div></div>`;
     }
@@ -573,6 +642,12 @@
     .det-fg label{display:block;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
     .det-input{width:100%;background:var(--bg);border:1px solid var(--bord);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px;font-family:'Barlow',sans-serif;outline:none}
     .det-input:focus{border-color:var(--acc)}
+    /* MODAL LIMPAR */
+    #limpar-overlay{display:none;position:fixed;inset:0;background:#000c;z-index:300;align-items:center;justify-content:center;padding:20px}
+    .limpar-panel{background:var(--surf);border:1px solid var(--bord);border-radius:16px;width:100%;max-width:480px;max-height:80vh;display:flex;flex-direction:column}
+    .limpar-header{padding:20px 24px;border-bottom:1px solid var(--bord);display:flex;justify-content:space-between;align-items:center}
+    .limpar-body{padding:16px 24px;overflow-y:auto;flex:1}
+    .limpar-footer{padding:16px 24px;border-top:1px solid var(--bord);display:flex;flex-direction:column;gap:8px}
     @media(max-width:768px){.resumo{grid-template-columns:repeat(2,1fr)}.ops-bar{flex-wrap:wrap}.brand span{display:none}#relogio{font-size:18px}.tab-wrap{padding:12px}}
   </style>
 </head>
@@ -601,8 +676,7 @@
     <button id="aba-dashboard"   class="aba-btn ativa" onclick="irAba('dashboard')">📊 Dashboard</button>
     <button id="aba-programacao" class="aba-btn"       onclick="irAba('programacao')">📅 Programação</button>
     <button id="aba-usuarios"    class="aba-btn"       onclick="irAba('usuarios')">
-      👥 Usuários
-      <span id="badge-pendentes" class="badge-n"></span>
+      👥 Usuários <span id="badge-pendentes" class="badge-n"></span>
     </button>
   </div>
 
@@ -647,6 +721,7 @@
   <div id="sec-usuarios"></div>
 </div>
 
+<!-- OVERLAY DETALHE -->
 <div id="overlay" onclick="if(event.target===this)fecharDetalhe()">
   <div class="det-panel">
     <div class="det-hd">
@@ -661,6 +736,28 @@
   </div>
 </div>
 
+<!-- MODAL LIMPAR CAMPOS -->
+<div id="limpar-overlay" onclick="if(event.target===this)fecharLimpar()">
+  <div class="limpar-panel">
+    <div class="limpar-header">
+      <div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:20px">🧹 Limpar campos</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:2px">Selecione os campos que deseja zerar</div>
+      </div>
+      <button onclick="fecharLimpar()" style="background:none;border:1px solid var(--bord);color:var(--muted);padding:6px 12px;border-radius:6px;cursor:pointer">✕</button>
+    </div>
+    <div class="limpar-body" id="limpar-lista"></div>
+    <div class="limpar-footer">
+      <div style="display:flex;gap:8px">
+        <button onclick="selecionarTodosLimpar(true)" style="flex:1;padding:8px;background:none;border:1px solid var(--bord);color:var(--muted);border-radius:6px;cursor:pointer;font-size:13px">Selecionar todos</button>
+        <button onclick="selecionarTodosLimpar(false)" style="flex:1;padding:8px;background:none;border:1px solid var(--bord);color:var(--muted);border-radius:6px;cursor:pointer;font-size:13px">Desmarcar todos</button>
+      </div>
+      <button id="btn-confirmar-limpar" onclick="confirmarLimpar()" style="width:100%;padding:12px;background:var(--danger);color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700">✅ Confirmar limpeza</button>
+    </div>
+  </div>
+</div>
+
+<!-- LEGENDA -->
 <div id="legenda-overlay" onclick="if(event.target===this)fecharLegenda()" style="display:none;position:fixed;inset:0;background:#000a;z-index:500;align-items:center;justify-content:center">
   <div style="background:#0e1a28;border:1px solid #1b2e42;border-radius:16px;padding:28px;width:90%;max-width:400px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
