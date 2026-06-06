@@ -39,7 +39,7 @@
     let veiculosProg  = [];
     let unsubProg     = null;
     let abaAtiva      = 'hoje';
-    let permissaoNovoLanc = false; // lida do Firestore
+    let permissaoNovoLanc = false;
 
     const $ = id => document.getElementById(id);
 
@@ -91,7 +91,6 @@
     const calcTL         = (ab,sa) => ab&&sa ? toHM(Math.max(0,toMin(sa)-toMin(ab))) : '';
     const calcTotalLoja  = (t1,t2) => { const a=toMin(t1),b=toMin(t2); return (a||b)?toHM(a+b):''; };
 
-    // ── PERMISSÕES ────────────────────────────────────────────────────
     function escutarPermissoes() {
       onSnapshot(doc(db,'configuracoes','permissoes'), snap => {
         if (snap.exists() && currentPerfil) {
@@ -100,13 +99,11 @@
         } else {
           permissaoNovoLanc = false;
         }
-        // Atualiza listas para mostrar/esconder botões
         renderLista();
         renderProgLista();
       });
     }
 
-    // ── DISPONIBILIDADE ───────────────────────────────────────────────
     async function buscarSituacaoMotorista(motorista, dataLancamento) {
       if (!motorista) return null;
       try {
@@ -191,6 +188,7 @@
         appEl.style.display='block';
         if(formEl) formEl.style.display='none';
         if($('lista-section')) $('lista-section').style.display='block';
+        if($('prog-section'))  $('prog-section').style.display='none';
       }
       else if(nome==='form'){
         appEl.style.display='block';
@@ -513,14 +511,26 @@
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     :root{--bg:#0f1923;--surf:#162130;--bord:#1e3048;--acc:#f0a500;--acc2:#00c9a7;--text:#e8edf2;--muted:#6b8099;--danger:#e85555;}
-    html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;font-size:15px;overscroll-behavior:none}
+
+    /* ── Layout base: tela cheia sem scroll no body ── */
+    html,body{
+      height:100vh;
+      overflow:hidden;
+      background:var(--bg);
+      color:var(--text);
+      font-family:'Barlow',sans-serif;
+      font-size:15px;
+      overscroll-behavior:none;
+    }
+
+    /* ── Telas de auth/status: scroll próprio ── */
     .tela-central{display:none;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px;text-align:center}
     .tela-central .icone{font-size:56px;margin-bottom:20px}
     .tela-central h2{font-family:'Barlow Condensed',sans-serif;font-size:26px;margin-bottom:10px}
     .tela-central p{color:var(--muted);font-size:14px;max-width:280px;line-height:1.6}
     .btn-sair{margin-top:24px;padding:10px 28px;background:none;border:1px solid var(--bord);color:var(--muted);border-radius:8px;cursor:pointer;font-size:14px}
     .btn-sair:hover{border-color:var(--danger);color:var(--danger)}
-    .auth-wrap{display:none;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+    .auth-wrap{display:none;flex-direction:column;align-items:center;justify-content:center;height:100vh;overflow-y:auto;padding:24px}
     .auth-box{width:100%;max-width:380px;background:var(--surf);border:1px solid var(--bord);border-radius:16px;padding:36px 28px}
     .logo{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:40px;color:var(--acc);text-align:center;line-height:1}
     .logo-sub{font-size:11px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);text-align:center;margin-bottom:32px}
@@ -534,19 +544,45 @@
     .link-btn{width:100%;margin-top:14px;padding:10px;background:none;border:1px solid var(--bord);color:var(--muted);border-radius:8px;cursor:pointer;font-size:14px}
     .link-btn:hover{border-color:var(--acc);color:var(--acc)}
     .erro{display:none;background:#e8555520;border:1px solid var(--danger);border-radius:8px;padding:10px 14px;color:var(--danger);font-size:13px;margin-top:12px;text-align:center}
-    #app-tela{display:none}
-    .topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;background:var(--surf);border-bottom:1px solid var(--bord);position:sticky;top:0;z-index:100}
+
+    /* ── App principal ── */
+    #app-tela{display:none;height:100vh;overflow:hidden;}
+
+    /* ── Cabeçalho fixo ── */
+    .app-header{
+      position:fixed;
+      top:0; left:0; right:0;
+      z-index:100;
+      background:var(--surf);
+    }
+    .topbar{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:14px 20px;
+      border-bottom:1px solid var(--bord);
+    }
     .topbar-left{display:flex;flex-direction:column;gap:2px}
     .topbar-user{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px}
     .topbar-meta{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:8px}
     .op-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;background:var(--acc);color:#0f1923}
     .btn-logout{background:none;border:1px solid var(--bord);color:var(--muted);padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px}
     .btn-logout:hover{border-color:var(--danger);color:var(--danger)}
-    #lista-section{padding:20px}#prog-section{padding:20px}
-    .abas-nav{display:flex;background:var(--surf);border-bottom:1px solid var(--bord);}
+    .abas-nav{display:flex;border-bottom:1px solid var(--bord);}
     .tab-btn{flex:1;padding:11px;background:none;border:none;border-bottom:3px solid transparent;color:var(--muted);font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;letter-spacing:1px;cursor:pointer;transition:all .2s}
     .tab-btn:hover{color:var(--text)}.tab-ativa{color:var(--acc)!important;border-bottom-color:var(--acc)!important}
-    .date-picker-wrap{padding:14px 20px 0;display:flex;gap:8px;flex-wrap:wrap}
+
+    /* ── Área de conteúdo com scroll ── */
+    /* topbar ≈ 57px + abas ≈ 43px = 100px */
+    .app-content{
+      position:fixed;
+      top:100px; left:0; right:0; bottom:0;
+      overflow-y:auto;
+      -webkit-overflow-scrolling:touch;
+    }
+
+    /* ── Seções de lista ── */
+    #lista-section{padding:20px}
+    #prog-section{padding:20px}
+    .date-picker-wrap{padding:0 0 14px;display:flex;gap:8px;flex-wrap:wrap}
     .btn-data{padding:8px 16px;background:var(--surf);border:1px solid var(--bord);border-radius:8px;color:var(--muted);font-size:13px;font-family:'Barlow Condensed',sans-serif;font-weight:600;cursor:pointer;transition:all .2s}
     .btn-data:hover{border-color:var(--acc);color:var(--acc)}
     .btn-data-ativa{background:#4da6ff20!important;border-color:#4da6ff!important;color:#4da6ff!important}
@@ -565,12 +601,26 @@
     .card-mot{font-size:13px;color:var(--muted);margin-bottom:8px}
     .card-info{display:flex;gap:12px;font-size:12px;color:var(--muted);flex-wrap:wrap}
     .empty{text-align:center;padding:40px 20px}.empty-icon{font-size:48px;margin:20px 0 10px}.empty p{color:var(--muted)}
-    #form-tela{display:none;padding-bottom:40px}
-    .form-header{display:flex;align-items:center;gap:14px;padding:14px 20px;background:var(--surf);border-bottom:1px solid var(--bord);position:sticky;top:57px;z-index:99}
+
+    /* ── Formulário: cabeçalho fixo próprio, corpo com scroll ── */
+    #form-tela{
+      display:none;
+      height:100%;
+      overflow:hidden;
+    }
+    .form-header{
+      position:sticky;
+      top:0;
+      z-index:10;
+      display:flex;align-items:center;gap:14px;
+      padding:14px 20px;
+      background:var(--surf);
+      border-bottom:1px solid var(--bord);
+    }
     .btn-voltar{background:none;border:1px solid var(--bord);color:var(--muted);padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;white-space:nowrap}
     .form-veiculo{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:22px}
     .form-sub{font-size:12px;color:var(--muted)}
-    .form-body{padding:20px;display:flex;flex-direction:column;gap:2px}
+    .form-body{padding:20px;display:flex;flex-direction:column;gap:2px;padding-bottom:40px}
     .sec-title{font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding:18px 0 8px;border-bottom:1px solid var(--bord);margin-bottom:10px}
     .formula-title{color:var(--acc2)!important}
     .formula-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px}
@@ -582,6 +632,8 @@
   </style>
 </head>
 <body>
+
+<!-- TELAS DE AUTH -->
 <div id="login-tela" class="auth-wrap" style="display:flex">
   <div class="auth-box">
     <div class="logo">FROTA<br>FIELD</div>
@@ -621,30 +673,46 @@
   <p>Seu acesso foi bloqueado pela supervisão. Entre em contato para mais informações.</p>
   <button class="btn-sair" onclick="fazerLogout()">Sair</button>
 </div>
+
+<!-- APP PRINCIPAL -->
 <div id="app-tela">
-  <div class="topbar">
-    <div class="topbar-left">
-      <div class="topbar-user" id="nome-usuario">—</div>
-      <div class="topbar-meta"><span class="op-badge" id="tag-op">—</span><span id="data-hoje">—</span></div>
+
+  <!-- CABEÇALHO FIXO -->
+  <div class="app-header">
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="topbar-user" id="nome-usuario">—</div>
+        <div class="topbar-meta"><span class="op-badge" id="tag-op">—</span><span id="data-hoje">—</span></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <button onclick="mostrarLegenda()" style="background:none;border:1px solid var(--bord);color:var(--muted);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px">?</button>
+        <button class="btn-logout" onclick="fazerLogout()">Sair</button>
+      </div>
     </div>
-    <button onclick="mostrarLegenda()" style="background:none;border:1px solid var(--bord);color:var(--muted);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px;margin-right:6px">?</button>
-    <button class="btn-logout" onclick="fazerLogout()">Sair</button>
+    <div class="abas-nav">
+      <button id="tab-hoje" class="tab-btn tab-ativa" onclick="irAba('hoje')">🚛 Hoje</button>
+      <button id="tab-prog" class="tab-btn" onclick="irAba('prog')">📅 Programação</button>
+    </div>
   </div>
-  <div class="abas-nav">
-    <button id="tab-hoje" class="tab-btn tab-ativa" onclick="irAba('hoje')">🚛 Hoje</button>
-    <button id="tab-prog" class="tab-btn" onclick="irAba('prog')">📅 Programação</button>
-  </div>
-  <div id="lista-section">
-    <div class="dia-label">Lançamentos do dia</div>
-    <div id="lista-veiculos"><div style="text-align:center;padding:40px;color:var(--muted)">Carregando...</div></div>
-  </div>
-  <div id="form-tela"></div>
-  <div id="prog-section" style="display:none">
-    <div class="dia-label">Programação futura — selecione a data</div>
-    <div class="date-picker-wrap" id="date-picker"></div>
-    <div style="padding:20px 20px 0" id="prog-lista"><div style="text-align:center;padding:40px;color:var(--muted)">Selecione uma data acima</div></div>
+
+  <!-- CONTEÚDO COM SCROLL -->
+  <div class="app-content">
+    <div id="lista-section">
+      <div class="dia-label">Lançamentos do dia</div>
+      <div id="lista-veiculos"><div style="text-align:center;padding:40px;color:var(--muted)">Carregando...</div></div>
+    </div>
+
+    <div id="prog-section" style="display:none">
+      <div class="dia-label">Programação futura — selecione a data</div>
+      <div class="date-picker-wrap" id="date-picker"></div>
+      <div id="prog-lista"><div style="text-align:center;padding:40px;color:var(--muted)">Selecione uma data acima</div></div>
+    </div>
+
+    <div id="form-tela"></div>
   </div>
 </div>
+
+<!-- LEGENDA -->
 <div id="legenda-overlay" onclick="if(event.target===this)fecharLegenda()" style="display:none;position:fixed;inset:0;background:#000a;z-index:500;align-items:center;justify-content:center">
   <div style="background:#0e1a28;border:1px solid #1b2e42;border-radius:16px;padding:28px;width:90%;max-width:400px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
