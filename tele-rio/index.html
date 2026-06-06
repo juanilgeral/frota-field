@@ -254,19 +254,50 @@
       --bg:#080f18;--surf:#0e1a28;--card:#11202f;--bord:#1b2e42;
       --acc:#ff8c42;--text:#dde6ef;--muted:#5a7a99;--danger:#e85555;
     }
-    html,body{min-height:100vh;background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif}
+
+    /* ── Layout base ── */
+    html,body{
+      height:100vh;
+      overflow:hidden;
+      background:var(--bg);
+      color:var(--text);
+      font-family:'Barlow',sans-serif;
+    }
     .mono{font-family:'JetBrains Mono',monospace;font-size:13px}
-    .topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:var(--surf);border-bottom:1px solid var(--bord);position:sticky;top:0;z-index:100}
+
+    /* ── Cabeçalho fixo ── */
+    /* topbar ≈ 66px + abas ≈ 45px = 111px */
+    .site-header{
+      position:fixed;
+      top:0; left:0; right:0;
+      z-index:100;
+      background:var(--surf);
+    }
+    .topbar{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:14px 24px;
+      border-bottom:1px solid var(--bord);
+    }
     .brand{display:flex;align-items:center;gap:12px}
     .brand-nome{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:24px;color:var(--acc)}
     .brand-sub{font-size:12px;color:var(--muted);letter-spacing:1px}
     .live-badge{background:#c0152a;color:white;font-size:11px;font-weight:900;padding:4px 10px;border-radius:20px;letter-spacing:1px;animation:pulse 1.2s infinite}
     @keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
     #relogio{font-family:'JetBrains Mono',monospace;font-size:20px;color:var(--acc)}
-    .abas{display:flex;padding:0 24px;background:var(--surf);border-bottom:1px solid var(--bord)}
+    .abas{display:flex;padding:0 24px;border-bottom:1px solid var(--bord)}
     .aba-btn{padding:12px 20px;background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);cursor:pointer;font-size:14px;font-weight:500;transition:color .2s}
     .aba-btn.ativa{color:var(--acc);border-bottom-color:var(--acc)}
     .aba-btn:hover{color:var(--text)}
+
+    /* ── Conteúdo com scroll ── */
+    .site-content{
+      position:fixed;
+      top:111px; left:0; right:0; bottom:0;
+      overflow-y:auto;
+      -webkit-overflow-scrolling:touch;
+    }
+
+    /* ── Dashboard ── */
     .resumo{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:20px 24px 0}
     .cs{background:var(--card);border:1px solid var(--bord);border-radius:12px;padding:18px}
     .cs .num{font-family:'Barlow Condensed',sans-serif;font-size:44px;font-weight:900;line-height:1}
@@ -281,11 +312,15 @@
     .col-placa{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px}
     .st-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
     .empty-row{text-align:center;padding:60px;color:var(--muted)}
+
+    /* ── Programação ── */
     #sec-programacao{display:none;padding:20px 24px 40px}
     .date-picker-wrap{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
     .btn-data{padding:8px 16px;background:var(--card);border:1px solid var(--bord);border-radius:8px;color:var(--muted);font-size:13px;font-family:'Barlow Condensed',sans-serif;font-weight:600;cursor:pointer;transition:all .2s}
     .btn-data:hover{border-color:var(--acc);color:var(--acc)}
     .btn-data-ativa{background:#ff8c4220!important;border-color:#ff8c42!important;color:#ff8c42!important}
+
+    /* ── Overlay detalhe ── */
     #overlay{display:none;position:fixed;inset:0;background:#000a;z-index:200;align-items:flex-end;justify-content:center}
     .det-panel{background:var(--surf);border:1px solid var(--bord);border-radius:20px 20px 0 0;width:100%;max-width:600px;max-height:85vh;overflow-y:auto;padding:28px}
     .det-hd{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px}
@@ -296,55 +331,65 @@
     .det-sec{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding:14px 0 6px;border-bottom:1px solid var(--bord);margin-bottom:8px}
     .det-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #0d1e2e}
     .det-l{font-size:12px;color:var(--muted)}.det-v{font-size:13px;font-weight:500;text-align:right}
+
     @media(max-width:768px){
       .resumo{grid-template-columns:repeat(2,1fr)}
       .tab-wrap{padding:12px}
       .brand-sub{display:none}
+      /* topbar mobile menor ≈ 56px + abas ≈ 45px = 101px */
+      .site-content{top:101px}
     }
   </style>
 </head>
 <body>
 
-<div class="topbar">
-  <div class="brand">
-    <div>
-      <div class="brand-nome"><span style="color:#4da6ff">JUANIL</span> <span style="color:#34d399">TELE-RIO</span></div>
-      <div class="brand-sub">Acompanhamento de Frota · Ao Vivo</div>
+<!-- CABEÇALHO FIXO -->
+<div class="site-header">
+  <div class="topbar">
+    <div class="brand">
+      <div>
+        <div class="brand-nome"><span style="color:#4da6ff">JUANIL</span> <span style="color:#34d399">TELE-RIO</span></div>
+        <div class="brand-sub">Acompanhamento de Frota · Ao Vivo</div>
+      </div>
+      <span class="live-badge">● AO VIVO</span>
     </div>
-    <span class="live-badge">● AO VIVO</span>
+    <button onclick="mostrarLegenda()" style="background:none;border:1px solid var(--bord);color:var(--muted);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px">?</button>
+    <span id="relogio">00:00</span>
   </div>
-  <button onclick="mostrarLegenda()" style="background:none;border:1px solid var(--bord);color:var(--muted);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px">?</button>
-  <span id="relogio">00:00</span>
-</div>
-
-<div class="abas">
-  <button id="aba-dashboard"   class="aba-btn ativa" onclick="irAba('dashboard')">📊 Dashboard</button>
-  <button id="aba-programacao" class="aba-btn"       onclick="irAba('programacao')">📅 Programação</button>
-</div>
-
-<!-- DASHBOARD -->
-<div id="sec-dashboard">
-  <div class="resumo">
-    <div class="cs"><div class="num n-total"  id="c-total">0</div><div class="lbl">Total hoje</div></div>
-    <div class="cs"><div class="num n-ok"     id="c-concluido">0</div><div class="lbl">Concluídos</div></div>
-    <div class="cs"><div class="num n-rota"   id="c-rota">0</div><div class="lbl">Em operação</div></div>
-    <div class="cs"><div class="num n-pend"   id="c-pendente">0</div><div class="lbl">Pendentes</div></div>
-  </div>
-  <div class="tab-wrap">
-    <div class="cnt-label" id="cnt-label">—</div>
-    <table>
-      <thead>
-        <tr><th>Veículo</th><th>Motorista</th><th>Destino</th><th>Ponto ON</th><th>Saída CD</th><th>Chegada CD</th><th>KM</th><th>Status</th></tr>
-      </thead>
-      <tbody id="tbody"><tr><td colspan="8" class="empty-row">Carregando...</td></tr></tbody>
-    </table>
+  <div class="abas">
+    <button id="aba-dashboard"   class="aba-btn ativa" onclick="irAba('dashboard')">📊 Dashboard</button>
+    <button id="aba-programacao" class="aba-btn"       onclick="irAba('programacao')">📅 Programação</button>
   </div>
 </div>
 
-<!-- PROGRAMAÇÃO -->
-<div id="sec-programacao">
-  <div class="date-picker-wrap" id="date-picker"></div>
-  <div id="prog-lista"><div style="text-align:center;padding:40px;color:var(--muted)">Selecione uma data acima</div></div>
+<!-- CONTEÚDO COM SCROLL -->
+<div class="site-content">
+
+  <!-- DASHBOARD -->
+  <div id="sec-dashboard">
+    <div class="resumo">
+      <div class="cs"><div class="num n-total"  id="c-total">0</div><div class="lbl">Total hoje</div></div>
+      <div class="cs"><div class="num n-ok"     id="c-concluido">0</div><div class="lbl">Concluídos</div></div>
+      <div class="cs"><div class="num n-rota"   id="c-rota">0</div><div class="lbl">Em operação</div></div>
+      <div class="cs"><div class="num n-pend"   id="c-pendente">0</div><div class="lbl">Pendentes</div></div>
+    </div>
+    <div class="tab-wrap">
+      <div class="cnt-label" id="cnt-label">—</div>
+      <table>
+        <thead>
+          <tr><th>Veículo</th><th>Motorista</th><th>Destino</th><th>Ponto ON</th><th>Saída CD</th><th>Chegada CD</th><th>KM</th><th>Status</th></tr>
+        </thead>
+        <tbody id="tbody"><tr><td colspan="8" class="empty-row">Carregando...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- PROGRAMAÇÃO -->
+  <div id="sec-programacao">
+    <div class="date-picker-wrap" id="date-picker"></div>
+    <div id="prog-lista"><div style="text-align:center;padding:40px;color:var(--muted)">Selecione uma data acima</div></div>
+  </div>
+
 </div>
 
 <!-- OVERLAY DETALHE -->
@@ -362,8 +407,7 @@
   </div>
 </div>
 
-
-<!-- LEGENDA MODAL -->
+<!-- LEGENDA -->
 <div id="legenda-overlay" onclick="if(event.target===this)fecharLegenda()" style="display:none;position:fixed;inset:0;background:#000a;z-index:500;align-items:center;justify-content:center">
   <div style="background:#0e1a28;border:1px solid #1b2e42;border-radius:16px;padding:28px;width:90%;max-width:400px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
