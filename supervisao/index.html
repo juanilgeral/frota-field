@@ -466,14 +466,17 @@
       btn.disabled=true; btn.textContent='Limpando...';
 
       try {
-        // Monta objeto com campos zerados
+        // 1. Zera no Firestore
         const updates = {};
         camposParaLimpar.forEach(campo => { updates[campo] = ''; });
-        // Se limpar PONTO_OFF_MOT, limpa também PONTO_OFF_MOTO
         if (updates.PONTO_OFF_MOT !== undefined) updates.PONTO_OFF_MOTO = '';
         if (updates.PONTO_OFF_MOTO !== undefined) updates.PONTO_OFF_MOT = '';
-
         await updateDoc(doc(db,'lancamentos',v.fid), updates);
+
+        // 2. Chama webhook para zerar na planilha também
+        const payload = { docId: v.fid, campos: camposParaLimpar };
+        const params = encodeURIComponent(JSON.stringify(payload));
+        await fetch(WEBHOOK_URL_SUP + '?limpar=' + params, { method: 'GET', mode: 'no-cors' });
 
         $('limpar-overlay').style.display='none';
         fecharDetalhe();
