@@ -37,6 +37,11 @@
 
     const $ = id => document.getElementById(id);
 
+    // Filtra apenas veículos com MOTORISTA e DESTINO preenchidos
+    function lancValidos(lista) {
+      return lista.filter(v => v.MOTORISTA && v.MOTORISTA.trim() && v.DESTINO && v.DESTINO.trim());
+    }
+
     function nowBR() {
       return new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Sao_Paulo'}));
     }
@@ -111,7 +116,6 @@
       const hMin   = agora.getHours()*60 + agora.getMinutes();
       const tMin   = t => { if(!t) return null; const p=t.split(':').map(Number); return p[0]*60+(p[1]||0); };
       const isHoje = !v.DATA || v.DATA === hojeISO();
-
       if (v.CHEGADA_VEICULO_CD && v.KM_CHEGADA) return {key:'concluido', label:'Concluído',   cor:'#34d399'};
       if (v.SAIDA_1 || v.ABERTURA_1)            return {key:'rota',      label:'Em rota',     cor:'#fbbf24'};
       const saidaMin = tMin(v.SAIDA_VEICULO_CD);
@@ -122,13 +126,15 @@
     }
 
     function renderCards() {
-      $('c-total').textContent     = todosLanc.length;
-      $('c-concluido').textContent = todosLanc.filter(v=>calcStatus(v).key==='concluido').length;
-      $('c-rota').textContent      = todosLanc.filter(v=>['rota','transito','iniciado'].includes(calcStatus(v).key)).length;
-      $('c-pendente').textContent  = todosLanc.filter(v=>calcStatus(v).key==='pendente').length;
+      // Contagem usa apenas veículos válidos (com MOTORISTA e DESTINO)
+      const validos = lancValidos(todosLanc);
+      $('c-total').textContent     = validos.length;
+      $('c-concluido').textContent = validos.filter(v=>calcStatus(v).key==='concluido').length;
+      $('c-rota').textContent      = validos.filter(v=>['rota','transito','iniciado'].includes(calcStatus(v).key)).length;
+      $('c-pendente').textContent  = validos.filter(v=>calcStatus(v).key==='pendente').length;
       ['LS','TL','HT','CV'].forEach(op => {
         const el = $('op-'+op);
-        if(el) el.textContent = todosLanc.filter(v=>v.OP===op).length;
+        if(el) el.textContent = validos.filter(v=>v.OP===op).length;
       });
     }
 
@@ -139,7 +145,8 @@
     };
 
     function renderTabela() {
-      let lista = [...todosLanc];
+      // Lista usa apenas veículos válidos (com MOTORISTA e DESTINO)
+      let lista = lancValidos(todosLanc);
       if (filtroOp !== 'TODAS') lista = lista.filter(v=>v.OP===filtroOp);
       lista.sort((a,b) => {
         const ord={pendente:0,iniciado:1,transito:2,rota:3,concluido:4};
@@ -147,7 +154,7 @@
       });
       const tbody = $('tbody');
       if (!lista.length) {
-        tbody.innerHTML = `<tr><td colspan="8" class="empty-row">Nenhum lançamento encontrado</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="9" class="empty-row">Nenhum lançamento encontrado</td></tr>`;
         $('cnt-label').textContent = '0 registros';
         return;
       }
@@ -197,14 +204,15 @@
 
     function renderProgLista() {
       const lista = $('prog-lista'); if(!lista) return;
-      let filtrado = [...veiculosProg];
+      // Programação também filtra por MOTORISTA e DESTINO
+      let filtrado = lancValidos(veiculosProg);
       if (filtroOp !== 'TODAS') filtrado = filtrado.filter(v=>v.OP===filtroOp);
       if (!filtrado.length) {
         lista.innerHTML = `<div style="text-align:center;padding:40px;color:var(--muted)">📅 Nenhum lançamento para ${labelData(dataProg)}.</div>`;
         return;
       }
       lista.innerHTML = `<table><thead><tr>
-        <th>OP</th><th>Veículo</th><th>Motorista</th>
+        <th>OP</th><th>Veículo</th><th>Motorista</th><th>Destino</th>
         <th>Ponto ON</th><th>Saída CD</th><th>Chegada CD</th>
         <th>KM</th><th>Status</th>
       </tr></thead><tbody>${filtrado.map(v => {
@@ -228,18 +236,14 @@
       const lista = origem==='prog' ? veiculosProg : todosLanc;
       const v = lista.find(x=>x.fid===fid);
       if(!v) return;
-
       const st  = calcStatus(v);
       const cor = OP_CORES[v.OP]||'#6b8099';
       const isProg = v.DATA && v.DATA !== hojeISO();
-
       $('det-titulo').innerHTML = `<span class="op-pill" style="background:${cor}20;color:${cor}">${v.OP||'—'}</span> ${v.VEICULO||'—'}`;
       $('det-sub').textContent  = `${v.MOTORISTA||'—'} · ${v.DATA||''}${isProg?' 📅':''}`;
       $('det-st').innerHTML     = `<span class="st-dot" style="background:${st.cor}"></span>${st.label}`;
-
       const row = (label, val) => val ? `<div class="det-row"><span class="det-l">${label}</span><span class="det-v">${val}</span></div>` : '';
       const sep = (label) => `<div class="det-sec">${label}</div>`;
-
       $('det-campos').innerHTML = `
         ${sep('📋 Dados da Base')}
         ${row('Destino', v.DESTINO)}
@@ -281,20 +285,10 @@
       const pendentes  = todosUsers.filter(u=>u.status==='pendente');
       const ativos     = todosUsers.filter(u=>u.status==='ativo');
       const bloqueados = todosUsers.filter(u=>u.status==='bloqueado');
-
       $('sec-usuarios').innerHTML = `
-        ${ativos.length ? `
-          <div class="usr-grupo-title">✅ Ativos (${ativos.length})</div>
-          ${ativos.map(u => cardUsuario(u)).join('')}
-        ` : ''}
-        ${pendentes.length ? `
-          <div class="usr-grupo-title" style="margin-top:24px">⏳ Aguardando aprovação (${pendentes.length})</div>
-          ${pendentes.map(u => cardUsuario(u)).join('')}
-        ` : ''}
-        ${bloqueados.length ? `
-          <div class="usr-grupo-title" style="margin-top:24px">🚫 Bloqueados (${bloqueados.length})</div>
-          ${bloqueados.map(u => cardUsuario(u)).join('')}
-        ` : ''}
+        ${ativos.length ? `<div class="usr-grupo-title">✅ Ativos (${ativos.length})</div>${ativos.map(u => cardUsuario(u)).join('')}` : ''}
+        ${pendentes.length ? `<div class="usr-grupo-title" style="margin-top:24px">⏳ Aguardando aprovação (${pendentes.length})</div>${pendentes.map(u => cardUsuario(u)).join('')}` : ''}
+        ${bloqueados.length ? `<div class="usr-grupo-title" style="margin-top:24px">🚫 Bloqueados (${bloqueados.length})</div>${bloqueados.map(u => cardUsuario(u)).join('')}` : ''}
       `;
     }
 
@@ -320,35 +314,11 @@
   </script>
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-    :root{
-      --bg:#080f18;--surf:#0e1a28;--card:#11202f;--bord:#1b2e42;
-      --acc:#f0a500;--text:#dde6ef;--muted:#5a7a99;--danger:#e85555;
-    }
-
-    /* ── Layout base ── */
-    html,body{
-      height:100vh;
-      overflow:hidden;
-      background:var(--bg);
-      color:var(--text);
-      font-family:'Barlow',sans-serif;
-    }
-
+    :root{--bg:#080f18;--surf:#0e1a28;--card:#11202f;--bord:#1b2e42;--acc:#f0a500;--text:#dde6ef;--muted:#5a7a99;--danger:#e85555;}
+    html,body{height:100vh;overflow:hidden;background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;}
     .mono{font-family:'JetBrains Mono',monospace;font-size:13px}
-
-    /* ── Cabeçalho fixo ── */
-    /* topbar ≈ 53px + abas ≈ 45px = 98px */
-    .site-header{
-      position:fixed;
-      top:0; left:0; right:0;
-      z-index:100;
-      background:var(--surf);
-    }
-    .topbar{
-      display:flex;align-items:center;justify-content:space-between;
-      padding:14px 24px;
-      border-bottom:1px solid var(--bord);
-    }
+    .site-header{position:fixed;top:0;left:0;right:0;z-index:100;background:var(--surf);}
+    .topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;border-bottom:1px solid var(--bord);}
     .brand{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:22px;color:var(--acc)}
     .brand span{color:var(--muted);font-weight:400;font-size:13px;margin-left:8px}
     #relogio{font-family:'JetBrains Mono',monospace;font-size:22px;color:var(--acc)}
@@ -356,16 +326,7 @@
     .aba-btn{padding:12px 20px;background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);cursor:pointer;font-size:14px;font-weight:500;transition:color .2s}
     .aba-btn.ativa{color:var(--acc);border-bottom-color:var(--acc)}
     .aba-btn:hover{color:var(--text)}
-
-    /* ── Conteúdo com scroll ── */
-    .site-content{
-      position:fixed;
-      top:98px; left:0; right:0; bottom:0;
-      overflow-y:auto;
-      -webkit-overflow-scrolling:touch;
-    }
-
-    /* ── Dashboard ── */
+    .site-content{position:fixed;top:98px;left:0;right:0;bottom:0;overflow-y:auto;-webkit-overflow-scrolling:touch;}
     .resumo{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:20px 24px 0}
     .cs{background:var(--card);border:1px solid var(--bord);border-radius:12px;padding:18px}
     .cs .num{font-family:'Barlow Condensed',sans-serif;font-size:44px;font-weight:900;line-height:1}
@@ -375,10 +336,8 @@
     .op-c{flex:1;background:var(--card);border:1px solid var(--bord);border-radius:10px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between}
     .op-n{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px}
     .op-cnt{font-family:'JetBrains Mono',monospace;font-size:22px}
-    .op-ls .op-n,.op-ls .op-cnt{color:#e84040}
-    .op-tl .op-n,.op-tl .op-cnt{color:#1a7a4a}
-    .op-ht .op-n,.op-ht .op-cnt{color:#2ed573}
-    .op-cv .op-n,.op-cv .op-cnt{color:#f5d800}
+    .op-ls .op-n,.op-ls .op-cnt{color:#e84040}.op-tl .op-n,.op-tl .op-cnt{color:#1a7a4a}
+    .op-ht .op-n,.op-ht .op-cnt{color:#2ed573}.op-cv .op-n,.op-cv .op-cnt{color:#f5d800}
     .filtros{display:flex;align-items:center;gap:8px;padding:14px 24px 0;flex-wrap:wrap}
     .filtros-l{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted)}
     .btn-op{padding:5px 14px;border-radius:20px;border:1px solid var(--bord);background:transparent;color:var(--muted);cursor:pointer;font-size:13px;font-weight:600;transition:all .15s}
@@ -393,15 +352,11 @@
     .col-placa{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px}
     .st-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
     .empty-row{text-align:center;padding:60px;color:var(--muted)}
-
-    /* ── Programação ── */
     #sec-programacao{display:none;padding:20px 24px 40px}
     .date-picker-wrap{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
     .btn-data{padding:8px 16px;background:var(--card);border:1px solid var(--bord);border-radius:8px;color:var(--muted);font-size:13px;font-family:'Barlow Condensed',sans-serif;font-weight:600;cursor:pointer;transition:all .2s}
     .btn-data:hover{border-color:var(--acc);color:var(--acc)}
     .btn-data-ativa{background:#4da6ff20!important;border-color:#4da6ff!important;color:#4da6ff!important}
-
-    /* ── Usuários ── */
     #sec-usuarios{display:none;padding:20px 24px 40px}
     .usr-grupo-title{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding-bottom:10px;border-bottom:1px solid var(--bord);margin-bottom:12px}
     .usr-card{background:var(--card);border:1px solid var(--bord);border-radius:12px;padding:16px;margin-bottom:10px}
@@ -410,11 +365,7 @@
     .usr-tags{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
     .cargo-tag{font-size:11px;background:#ffffff10;border:1px solid var(--bord);border-radius:4px;padding:2px 8px;color:var(--muted)}
     .status-tag{font-size:11px;border-radius:4px;padding:2px 8px;font-weight:600}
-    .st-ativo{background:#34d39920;color:#34d399}
-    .st-pendente{background:#fbbf2420;color:#fbbf24}
-    .st-bloqueado{background:#e8555520;color:var(--danger)}
-
-    /* ── Overlay detalhe ── */
+    .st-ativo{background:#34d39920;color:#34d399}.st-pendente{background:#fbbf2420;color:#fbbf24}.st-bloqueado{background:#e8555520;color:var(--danger)}
     #overlay{display:none;position:fixed;inset:0;background:#000a;z-index:200;align-items:flex-end;justify-content:center}
     .det-panel{background:var(--surf);border:1px solid var(--bord);border-radius:20px 20px 0 0;width:100%;max-width:600px;max-height:85vh;overflow-y:auto;padding:28px}
     .det-hd{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px}
@@ -425,19 +376,10 @@
     .det-sec{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding:14px 0 6px;border-bottom:1px solid var(--bord);margin-bottom:8px}
     .det-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #0d1e2e}
     .det-l{font-size:12px;color:var(--muted)}.det-v{font-size:13px;font-weight:500;text-align:right;max-width:65%}
-
-    @media(max-width:768px){
-      .resumo{grid-template-columns:repeat(2,1fr)}
-      .ops-bar{flex-wrap:wrap}
-      .brand span{display:none}
-      #relogio{font-size:18px}
-      .tab-wrap{padding:12px}
-    }
+    @media(max-width:768px){.resumo{grid-template-columns:repeat(2,1fr)}.ops-bar{flex-wrap:wrap}.brand span{display:none}#relogio{font-size:18px}.tab-wrap{padding:12px}}
   </style>
 </head>
 <body>
-
-<!-- CABEÇALHO FIXO -->
 <div class="site-header">
   <div class="topbar">
     <div class="brand">FROTA <span>Painel de Acompanhamento</span></div>
@@ -451,10 +393,7 @@
   </div>
 </div>
 
-<!-- CONTEÚDO COM SCROLL -->
 <div class="site-content">
-
-  <!-- DASHBOARD -->
   <div id="sec-dashboard">
     <div class="resumo">
       <div class="cs"><div class="num n-total"  id="c-total">0</div><div class="lbl">Total hoje</div></div>
@@ -479,26 +418,20 @@
     <div class="tab-wrap">
       <div class="cnt-label" id="cnt-label">—</div>
       <table>
-        <thead>
-          <tr><th>OP</th><th>Veículo</th><th>Motorista</th><th>Destino</th><th>Ponto ON</th><th>Saída CD</th><th>Chegada CD</th><th>KM</th><th>Status</th></tr>
-        </thead>
-        <tbody id="tbody"><tr><td colspan="8" class="empty-row">Carregando...</td></tr></tbody>
+        <thead><tr><th>OP</th><th>Veículo</th><th>Motorista</th><th>Destino</th><th>Ponto ON</th><th>Saída CD</th><th>Chegada CD</th><th>KM</th><th>Status</th></tr></thead>
+        <tbody id="tbody"><tr><td colspan="9" class="empty-row">Carregando...</td></tr></tbody>
       </table>
     </div>
   </div>
 
-  <!-- PROGRAMAÇÃO -->
   <div id="sec-programacao">
     <div class="date-picker-wrap" id="date-picker"></div>
     <div id="prog-lista"><div style="text-align:center;padding:40px;color:var(--muted)">Selecione uma data acima</div></div>
   </div>
 
-  <!-- USUÁRIOS -->
   <div id="sec-usuarios"></div>
-
 </div>
 
-<!-- OVERLAY DETALHE -->
 <div id="overlay" onclick="if(event.target===this)fecharDetalhe()">
   <div class="det-panel">
     <div class="det-hd">
@@ -513,7 +446,6 @@
   </div>
 </div>
 
-<!-- LEGENDA -->
 <div id="legenda-overlay" onclick="if(event.target===this)fecharLegenda()" style="display:none;position:fixed;inset:0;background:#000a;z-index:500;align-items:center;justify-content:center">
   <div style="background:#0e1a28;border:1px solid #1b2e42;border-radius:16px;padding:28px;width:90%;max-width:400px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
