@@ -219,13 +219,119 @@
 
     window.irAba = (aba) => {
       abaPainel = aba;
-      ['dashboard','usuarios','programacao'].forEach(a => {
+      ['dashboard','usuarios','programacao','historico'].forEach(a => {
         const btn=$('aba-'+a); const sec=$('sec-'+a);
         if(btn) btn.classList.toggle('ativa', a===aba);
         if(sec) sec.style.display = a===aba ? 'block' : 'none';
       });
       if (aba==='programacao') { dataProg=dataProg||dataFutura(1); renderDatePickerSup(); carregarProgSup(); }
+      if (aba==='historico') { iniciarHistorico(); }
     };
+
+    // ── HISTÓRICO ─────────────────────────────────────────────
+    let historicoUnsubscribe = null;
+    let historicoDatas = [];
+    let historicoDataSel = null;
+
+    function iniciarHistorico() {
+      if (historicoDatas.length) { renderHistoricoDatePicker(); return; }
+      const el = $('hist-lista'); if(el) el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">⏳ Carregando datas...</div>';
+      // Busca todos os lançamentos para extrair datas disponíveis
+      // Usa getDocs paginado pelo Firestore REST (sem onSnapshot para economizar cota)
+      import("https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js").then(({getDocs, collection, query, orderBy, limit}) => {
+        getDocs(query(collection(db,'lancamentos'))).then(snap => {
+          const datasSet = new Set();
+          snap.forEach(d => { const data = d.data().DATA; if(data) datasSet.add(data); });
+          // Ordena datas descrescente (mais recente primeiro)
+          historicoDatas = [...datasSet].filter(d => /^\d{2}\/\d{2}\/\d{2,4}$/.test(d)).sort((a,b) => {
+            return parseDateHist(b) - parseDateHist(a);
+          });
+          renderHistoricoDatePicker();
+        }).catch(e => { if(el) el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--danger)">Erro ao carregar datas.</div>'; });
+      });
+    }
+
+    function parseDateHist(iso) {
+      const [dd,mm,aa] = iso.split('/');
+      const ano = aa.length === 2 ? '20'+aa : aa;
+      return new Date(parseInt(ano), parseInt(mm)-1, parseInt(dd));
+    }
+
+    function renderHistoricoDatePicker() {
+      const c = $('hist-date-picker'); if(!c) return;
+      if (!historicoDatas.length) { c.innerHTML = '<div style="color:var(--muted);font-size:13px">Nenhuma data encontrada.</div>'; return; }
+      const hoje = hojeISO();
+      // Exclui hoje e datas futuras (essas ficam no Dashboard/Programação)
+      const passadas = historicoDatas.filter(d => {
+        const [dd,mm,aa] = d.split('/'); const [hdd,hmm,haa] = hoje.split('/');
+        const ano = aa.length===2?'20'+aa:aa; const hano = haa.length===2?'20'+haa:haa;
+        return `${ano}${mm}${dd}` < `${hano}${hmm}${hdd}`;
+      });
+      if (!passadas.length) { c.innerHTML = '<div style="color:var(--muted);font-size:13px">Nenhum histórico disponível.</div>'; return; }
+      const dias = ['dom','seg','ter','qua','qui','sex','sáb'];
+      c.innerHTML = passadas.map(d => {
+        const dt = parseDateHist(d);
+        const lbl = `${d} (${dias[dt.getDay()]})`;
+        return `<button class="btn-data${d===historicoDataSel?' btn-data-ativa':''}" onclick="selecionarHistorico('${d}')">${lbl}</button>`;
+      }).join('');
+    }
+
+    window.selecionarHistorico = (data) => {
+      historicoDataSel = data;
+      renderHistoricoDatePicker();
+      carregarHistorico(data);
+    };
+
+    function carregarHistorico(data) {
+      const lista = $('hist-lista'); if(!lista) return;
+      lista.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">⏳ Carregando...</div>';
+      if (historicoUnsubscribe) { historicoUnsubscribe(); historicoUnsubscribe = null; }
+      import("https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js").then(({getDocs, collection, query, where}) => {
+        getDocs(query(collection(db,'lancamentos'), where('DATA','==',data))).then(snap => {
+          const lancs = [];
+          snap.forEach(d => lancs.push({fid:d.id,...d.data()}));
+          renderHistoricoTabela(lancs, data);
+        }).catch(() => { lista.innerHTML = '<div style="text-align:center;padding:40px;color:var(--danger)">Erro ao carregar.</div>'; });
+      });
+    }
+
+    function renderHistoricoTabela(lancs, data) {
+      const lista = $('hist-lista'); if(!lista) return;
+      const dias = ['dom','seg','ter','qua','qui','sex','sáb'];
+      const dt = parseDateHist(data);
+      const titulo = `${data} (${dias[dt.getDay()]}) — ${lancs.length} lançamento${lancs.length!==1?'s':''}`;
+      if (!lancs.length) {
+        lista.innerHTML = `<div style="text-align:center;padding:40px;color:var(--muted)">Nenhum lançamento em ${data}.</div>`;
+        return;
+      }
+      lancs.sort((a,b) => (a.OP||'').localeCompare(b.OP||'') || (a.VEICULO||'').localeCompare(b.VEICULO||''));
+      lista.innerHTML = `
+        <div style="font-size:13px;color:var(--muted);margin-bottom:12px">${titulo}</div>
+        <div style="overflow-x:auto">
+        <table>
+          <thead><tr>
+            <th>OP</th><th>Veículo</th><th>Motorista</th><th>Destino</th>
+            <th>Ponto ON</th><th>Saída CD</th><th>Chegada CD</th>
+            <th>KM Perc.</th><th>Hora Total</th><th>Status</th>
+          </tr></thead>
+          <tbody>${lancs.map(v => {
+            const st = calcStatus(v);
+            const cor = {LS:'#e84040',TL:'#1a7a4a',HT:'#2ed573',CV:'#f5d800'}[v.OP]||'#6b8099';
+            return `<tr>
+              <td><span class="op-pill" style="background:${cor}20;color:${cor}">${v.OP||'—'}</span></td>
+              <td class="col-placa">${v.VEICULO||'—'}</td>
+              <td>${v.MOTORISTA||'—'}</td>
+              <td style="font-size:12px;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.DESTINO||'—'}</td>
+              <td class="mono">${v.PONTO_ON||'—'}</td>
+              <td class="mono">${v.SAIDA_VEICULO_CD||'—'}</td>
+              <td class="mono">${v.CHEGADA_VEICULO_CD||'—'}</td>
+              <td class="mono">${v.KM_PERCORRIDO?v.KM_PERCORRIDO+' km':'—'}</td>
+              <td class="mono">${v.HORA_TOTAL_MOTORISTA||'—'}</td>
+              <td><span class="st-dot" style="background:${st.cor}"></span>${st.label}</td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table></div>`;
+    }
 
     function atualizarBadgePendentes() {
       const n = todosUsers.filter(u=>u.status==='pendente').length;
@@ -595,6 +701,8 @@
 
     /* ── Programação ── */
     #sec-programacao{display:none;padding:20px 24px 40px}
+    #sec-historico{display:none;padding:20px 24px 40px}
+    .hist-date-picker{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
     .date-picker-wrap{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
     .btn-data{padding:8px 16px;background:var(--card);border:1px solid var(--bord);border-radius:8px;color:var(--muted);font-size:13px;font-family:'Barlow Condensed',sans-serif;font-weight:600;cursor:pointer;transition:all .2s}
     .btn-data:hover{border-color:var(--acc);color:var(--acc)}
@@ -680,6 +788,7 @@
       <button id="aba-usuarios"    class="aba-btn"       onclick="irAba('usuarios')">
         👥 Usuários <span id="badge-pendentes" class="badge-n"></span>
       </button>
+      <button id="aba-historico"   class="aba-btn"       onclick="irAba('historico')">📂 Histórico</button>
     </div>
   </div>
 
@@ -725,6 +834,15 @@
     </div>
 
     <div id="sec-usuarios"></div>
+
+    <div id="sec-historico">
+      <div class="usr-grupo-title" style="margin-bottom:16px">📂 Histórico de Lançamentos</div>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:16px">Selecione uma data para ver os lançamentos. Somente leitura.</p>
+      <div class="hist-date-picker" id="hist-date-picker">
+        <div style="color:var(--muted);font-size:13px">Clique na aba para carregar as datas...</div>
+      </div>
+      <div id="hist-lista"></div>
+    </div>
 
   </div><!-- /site-content -->
 </div><!-- /dashboard-tela -->
