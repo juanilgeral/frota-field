@@ -213,14 +213,21 @@
       return {key:'pendente', label:'Pendente', cor:'#6b8099'};
     }
 
+    function escalado(v) {
+      return !!(v.MOTORISTA && v.MOTORISTA.trim() && v.DESTINO && v.DESTINO.trim());
+    }
+
     function renderCards() {
-      $('c-total').textContent     = todosLanc.length;
-      $('c-concluido').textContent = todosLanc.filter(v=>calcStatus(v).key==='concluido').length;
-      $('c-rota').textContent      = todosLanc.filter(v=>['rota','transito','iniciado'].includes(calcStatus(v).key)).length;
-      $('c-pendente').textContent  = todosLanc.filter(v=>calcStatus(v).key==='pendente').length;
+      // KPIs principais: só veículos com motorista E destino preenchidos
+      const lancEscalados = todosLanc.filter(escalado);
+      $('c-total').textContent     = lancEscalados.length;
+      $('c-concluido').textContent = lancEscalados.filter(v=>calcStatus(v).key==='concluido').length;
+      $('c-rota').textContent      = lancEscalados.filter(v=>['rota','transito','iniciado'].includes(calcStatus(v).key)).length;
+      $('c-pendente').textContent  = lancEscalados.filter(v=>calcStatus(v).key==='pendente').length;
+      // Contagem por OP: só escalados
       ['LS','TL','HT','CV'].forEach(op => {
         const el = $('op-'+op);
-        if(el) el.textContent = todosLanc.filter(v=>v.OP===op).length;
+        if(el) el.textContent = lancEscalados.filter(v=>v.OP===op).length;
       });
     }
 
