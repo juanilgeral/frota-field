@@ -5,432 +5,387 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#080f18">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <title>Juanil Tele-Rio — Acompanhamento de Frota</title>
+  <title>Juanil Tele-Rio — Acompanhamento</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@300;400;500&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <script type="module">
-    import { initializeApp }   from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
-    import { getFirestore, collection, query, where, onSnapshot, getDocs }
-                               from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
 
-    const FIREBASE_CONFIG = {
-      apiKey:            "AIzaSyA211lxR6Nk3bWH8lJWzYkHTMnlfHPar8A",
-      authDomain:        "frota-field.firebaseapp.com",
-      projectId:         "frota-field",
-      storageBucket:     "frota-field.firebasestorage.app",
-      messagingSenderId: "642844753455",
-      appId:             "1:642844753455:web:9be3f31a8bb735dfbd50da"
-    };
-
+  <script>
+    const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTd77MkT5hd6gzTkMfzX2BVWY5Hqqfo3NluQY58mnOklN8--hPVIoe2CfzkbttnucJKbnJFiaPEWSmR/pub?gid=1559964021&single=true&output=csv';
     const OP = 'TL';
-    const app = initializeApp(FIREBASE_CONFIG);
-    const db  = getFirestore(app);
+    const SYNC_INTERVAL = 5 * 60 * 1000; // 5 minutos
 
-    let todosLanc    = [];
-    let abaPainel    = 'dashboard';
-    let dataProg     = null;
-    let veiculosProg = [];
-    let unsubProg    = null;
+    let todosLanc = [];
+    let abaPainel = 'dashboard';
+    let historicoDatas = [];
+    let historicoDataSel = null;
+    let dataProg = null;
+    let syncTimer = null;
 
-    const $ = id => document.getElementById(id);
-
-    function nowBR() {
-      return new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Sao_Paulo'}));
+    // ── CSV ───────────────────────────────────────────────────
+    async function fetchCSV() {
+      const resp = await fetch(CSV_URL + '&cachebust=' + Date.now());
+      const text = await resp.text();
+      const lines = text.split(/\r?\n/).filter(l => l.trim());
+      if (lines.length < 2) return [];
+      return lines.slice(1).map(line => parseLine(line));
     }
+
+    function parseLine(line) {
+      const cols = []; let cur = '', inQ = false;
+      for (let i = 0; i < line.length; i++) {
+        const c = line[i];
+        if (c === '"') { if (inQ && line[i+1]==='"') { cur+='"'; i++; } else inQ=!inQ; }
+        else if (c === ',' && !inQ) { cols.push(cur.trim()); cur=''; }
+        else cur += c;
+      }
+      cols.push(cur.trim());
+      return {
+        DATA:               cols[0]  || '',
+        DIA:                cols[1]  || '',
+        OP:                 cols[2]  || '',
+        VEICULO:            cols[3]  || '',
+        MOTORISTA:          cols[4]  || '',
+        PONTO_ON:           cols[5]  || '',
+        PREVISAO_REFEICAO:  cols[6]  || '',
+        PONTO_OFF_MOTO:     cols[7]  || '',
+        DESTINO:            cols[9]  || '',
+        SAIDA_VEICULO_CD:   cols[10] || '',
+        SM:                 cols[12] || '',
+        ABERTURA_1:         cols[18] || '',
+        SAIDA_1:            cols[20] || '',
+        TOTAL_LOJA_1:       cols[21] || '',
+        ABERTURA_2:         cols[23] || '',
+        SAIDA_2:            cols[25] || '',
+        CHEGADA_VEICULO_CD: cols[29] || '',
+        PONTO_OFF_MOT:      cols[30] || '',
+        HORA_TOTAL:         cols[31] || '',
+        KM_CHEGADA:         cols[33] || '',
+        KM_PERCORRIDO:      cols[35] || '',
+      };
+    }
+
+    // ── Datas ─────────────────────────────────────────────────
     function hojeISO() {
-      const d = nowBR();
+      const d = new Date(new Date().toLocaleString('en-US', {timeZone:'America/Sao_Paulo'}));
       return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getFullYear()).slice(-2)}`;
     }
-    function dataFutura(n) {
-      const d = nowBR();
-      d.setDate(d.getDate() + n);
+    function dataFuturaISO(n) {
+      const d = new Date(new Date().toLocaleString('en-US', {timeZone:'America/Sao_Paulo'}));
+      d.setDate(d.getDate()+n);
       return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getFullYear()).slice(-2)}`;
+    }
+    function parseDate(iso) {
+      const [dd,mm,aa] = iso.split('/');
+      return new Date(parseInt(aa.length===2?'20'+aa:aa), parseInt(mm)-1, parseInt(dd));
     }
     function labelData(iso) {
-      const [dd,mm,aa] = iso.split('/');
-      const d = new Date(2000+parseInt(aa), parseInt(mm)-1, parseInt(dd));
       const dias = ['dom','seg','ter','qua','qui','sex','sáb'];
-      return `${dd}/${mm} (${dias[d.getDay()]})`;
+      const dt = parseDate(iso);
+      return `${iso} (${dias[dt.getDay()]})`;
     }
 
+    // ── Status ────────────────────────────────────────────────
     function calcStatus(v) {
-      const agora  = new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Sao_Paulo'}));
-      const hMin   = agora.getHours()*60 + agora.getMinutes();
-      const tMin   = t => { if(!t) return null; const p=t.split(':').map(Number); return p[0]*60+(p[1]||0); };
-      const isHoje = !v.DATA || v.DATA === hojeISO();
+      const agora = new Date(new Date().toLocaleString('en-US',{timeZone:'America/Sao_Paulo'}));
+      const hMin  = agora.getHours()*60+agora.getMinutes();
+      const tMin  = t => { if(!t) return null; const p=t.split(':').map(Number); return p[0]*60+(p[1]||0); };
+      const isHoje = v.DATA === hojeISO();
 
-      if (v.CHEGADA_VEICULO_CD && v.KM_CHEGADA) return {key:'concluido', label:'Concluído',   cor:'#34d399'};
-      if (v.SAIDA_1 || v.ABERTURA_1)            return {key:'rota',      label:'Em rota',     cor:'#fbbf24'};
+      if (v.CHEGADA_VEICULO_CD && v.KM_CHEGADA) return {key:'concluido', label:'Concluído', cor:'#34d399'};
+      if (v.SAIDA_1 || v.ABERTURA_1)            return {key:'rota',      label:'Em rota',  cor:'#fbbf24'};
 
-      // Iniciado e Em trânsito só se SAIDA_VEICULO_CD estiver preenchida
       const saidaMin = tMin(v.SAIDA_VEICULO_CD);
       if (saidaMin !== null) {
         if (isHoje && hMin >= saidaMin) return {key:'transito', label:'Em trânsito', cor:'#f97316'};
         return {key:'iniciado', label:'Iniciado', cor:'#4da6ff'};
       }
-
       return {key:'pendente', label:'Pendente', cor:'#6b8099'};
     }
 
-    function iniciar() {
-      iniciarRelogio();
-      escutarLancamentos();
-      dataProg = dataFutura(1);
-    }
+    // ── Sync ──────────────────────────────────────────────────
+    async function sincronizar(silencioso) {
+      const btnEl = document.getElementById('btn-sync');
+      const statusEl = document.getElementById('sync-status');
+      if (!silencioso && btnEl) { btnEl.disabled=true; btnEl.textContent='⏳ Atualizando...'; }
+      try {
+        const linhas = await fetchCSV();
+        todosLanc = linhas.filter(r => r.OP === OP && r.DATA && r.VEICULO);
 
-    function iniciarRelogio() {
-      const el = $('relogio');
-      const tick = () => {
-        const d = new Date();
-        if(el) el.textContent = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-      };
-      tick(); setInterval(tick, 1000);
-    }
+        // Extrai datas disponíveis para histórico
+        const datasSet = new Set(todosLanc.map(r=>r.DATA));
+        historicoDatas = [...datasSet].filter(d=>/^\d{2}\/\d{2}\/\d{2,4}$/.test(d))
+          .sort((a,b) => parseDate(b)-parseDate(a));
 
-    function escutarLancamentos() {
-      onSnapshot(
-        query(collection(db,'lancamentos'), where('DATA','==',hojeISO()), where('OP','==',OP)),
-        snap => {
-          todosLanc = [];
-          snap.forEach(d => todosLanc.push({fid:d.id,...d.data()}));
-          renderCards(); renderTabela();
-        }
-      );
-    }
+        if (!dataProg) dataProg = dataFuturaISO(1);
 
-    window.irAba = (aba) => {
-      abaPainel = aba;
-      ['dashboard','programacao','historico'].forEach(a => {
-        const btn = $('aba-'+a);
-        const sec = $('sec-'+a);
-        if(btn) btn.classList.toggle('ativa', a===aba);
-        if(sec) sec.style.display = a===aba ? 'block' : 'none';
-      });
-      if (aba==='programacao') {
-        dataProg = dataProg || dataFutura(1);
-        renderDatePicker();
-        carregarProg();
+        atualizarDashboard();
+
+        const agora = new Date().toLocaleTimeString('pt-BR');
+        if (statusEl) { statusEl.textContent = `✅ Atualizado às ${agora}`; statusEl.className='sync-ok'; }
+      } catch(e) {
+        if (statusEl) { statusEl.textContent = '❌ Erro ao carregar'; statusEl.className='sync-err'; }
       }
-      if (aba==='historico') { iniciarHistorico(); }
-    };
-
-    // ── HISTÓRICO (filtra OP=TL) ──────────────────────────────
-    let historicoDatas = [];
-    let historicoDataSel = null;
-
-    function parseDateHist(iso) {
-      const [dd,mm,aa] = iso.split('/');
-      const ano = aa.length === 2 ? '20'+aa : aa;
-      return new Date(parseInt(ano), parseInt(mm)-1, parseInt(dd));
+      if (!silencioso && btnEl) { btnEl.disabled=false; btnEl.textContent='🔄 Atualizar'; }
     }
 
-    function iniciarHistorico() {
-      if (historicoDatas.length) { renderHistoricoDatePicker(); return; }
-      const el = $('hist-lista');
-      if(el) el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">⏳ Carregando datas...</div>';
-      getDocs(query(collection(db,'lancamentos'), where('OP','==',OP))).then(snap => {
-        const datasSet = new Set();
-        snap.forEach(d => { const data = d.data().DATA; if(data) datasSet.add(data); });
-        historicoDatas = [...datasSet].filter(d => /^\d{2}\/\d{2}\/\d{2,4}$/.test(d)).sort((a,b) => parseDateHist(b) - parseDateHist(a));
-        renderHistoricoDatePicker();
-      }).catch(() => { if(el) el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--danger)">Erro ao carregar datas.</div>'; });
+    function atualizarDashboard() {
+      if (abaPainel === 'dashboard') renderDashboard();
+      else if (abaPainel === 'programacao') renderProgramacao();
+      else if (abaPainel === 'historico') renderHistorico();
     }
 
-    function renderHistoricoDatePicker() {
-      const c = $('hist-date-picker'); if(!c) return;
+    // ── Dashboard ─────────────────────────────────────────────
+    function renderDashboard() {
       const hoje = hojeISO();
-      const passadas = historicoDatas.filter(d => {
-        const [dd,mm,aa] = d.split('/'); const [hdd,hmm,haa] = hoje.split('/');
-        const ano = aa.length===2?'20'+aa:aa; const hano = haa.length===2?'20'+haa:haa;
-        return `${ano}${mm}${dd}` < `${hano}${hmm}${hdd}`;
-      });
-      if (!passadas.length) { c.innerHTML = '<div style="color:var(--muted);font-size:13px">Nenhum histórico disponível.</div>'; return; }
-      const dias = ['dom','seg','ter','qua','qui','sex','sáb'];
-      c.innerHTML = passadas.map(d => {
-        const dt = parseDateHist(d);
-        return `<button class="btn-data${d===historicoDataSel?' btn-data-ativa':''}" onclick="selecionarHistorico('${d}')">${d} (${dias[dt.getDay()]})</button>`;
+      const lancs = todosLanc.filter(r => r.DATA === hoje);
+      const escalados = lancs.filter(r => r.MOTORISTA && r.DESTINO);
+
+      const nTotal    = escalados.length;
+      const nConc     = escalados.filter(r=>calcStatus(r).key==='concluido').length;
+      const nRota     = escalados.filter(r=>['rota','transito','iniciado'].includes(calcStatus(r).key)).length;
+      const nPend     = escalados.filter(r=>calcStatus(r).key==='pendente').length;
+      const nTransito = escalados.filter(r=>calcStatus(r).key==='transito').length;
+      const nIniciado = escalados.filter(r=>calcStatus(r).key==='iniciado').length;
+      const nEmRota   = escalados.filter(r=>calcStatus(r).key==='rota').length;
+
+      document.getElementById('kpi-total').textContent    = nTotal || '—';
+      document.getElementById('kpi-conc').textContent     = nConc  || '0';
+      document.getElementById('kpi-op').textContent       = nRota  || '0';
+      document.getElementById('kpi-pend').textContent     = nPend  || '0';
+      document.getElementById('kpi-transito').textContent = nTransito || '0';
+      document.getElementById('kpi-iniciado').textContent = nIniciado || '0';
+      document.getElementById('kpi-rota').textContent     = nEmRota   || '0';
+
+      const cnt = document.getElementById('cnt-label');
+      if (cnt) cnt.textContent = `${escalados.length} veículo${escalados.length!==1?'s':''}`;
+
+      renderTabela(escalados, hoje);
+    }
+
+    function renderTabela(lancs, data) {
+      const tbody = document.getElementById('tbody');
+      if (!tbody) return;
+      if (!lancs.length) {
+        tbody.innerHTML = `<tr><td colspan="8" class="empty-row">Nenhum veículo escalado para ${data}.</td></tr>`;
+        return;
+      }
+      const ord = {pendente:0,iniciado:1,transito:2,rota:3,concluido:4};
+      const lista = [...lancs].sort((a,b)=>(ord[calcStatus(a).key]||0)-(ord[calcStatus(b).key]||0));
+      tbody.innerHTML = lista.map(v => {
+        const st = calcStatus(v);
+        return `<tr>
+          <td class="col-placa">${v.VEICULO||'—'}</td>
+          <td>${v.MOTORISTA||'—'}</td>
+          <td class="col-dest">${v.DESTINO||'—'}</td>
+          <td class="mono">${v.PONTO_ON||'—'}</td>
+          <td class="mono">${v.SAIDA_VEICULO_CD||'—'}</td>
+          <td class="mono">${v.CHEGADA_VEICULO_CD||'—'}</td>
+          <td class="mono">${v.KM_PERCORRIDO?v.KM_PERCORRIDO+' km':'—'}</td>
+          <td><span class="st-dot" style="background:${st.cor}"></span>${st.label}</td>
+        </tr>`;
       }).join('');
     }
 
-    window.selecionarHistorico = (data) => {
-      historicoDataSel = data;
-      renderHistoricoDatePicker();
-      carregarHistorico(data);
-    };
+    // ── Programação ───────────────────────────────────────────
+    function renderProgramacao() {
+      const picker = document.getElementById('prog-picker');
+      const lista  = document.getElementById('prog-lista');
+      if (!picker || !lista) return;
 
-    function carregarHistorico(data) {
-      const lista = $('hist-lista'); if(!lista) return;
-      lista.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">⏳ Carregando...</div>';
-      getDocs(query(collection(db,'lancamentos'), where('DATA','==',data), where('OP','==',OP))).then(snap => {
-        const lancs = [];
-        snap.forEach(d => lancs.push({fid:d.id,...d.data()}));
-        renderHistoricoTabela(lancs, data);
-      }).catch(() => { lista.innerHTML = '<div style="text-align:center;padding:40px;color:var(--danger)">Erro ao carregar.</div>'; });
-    }
-
-    function renderHistoricoTabela(lancs, data) {
-      const lista = $('hist-lista'); if(!lista) return;
+      const hoje = hojeISO();
+      const futuras = historicoDatas.filter(d => parseDate(d) >= parseDate(hoje));
       const dias = ['dom','seg','ter','qua','qui','sex','sáb'];
-      const dt = parseDateHist(data);
+
+      picker.innerHTML = futuras.map(d => {
+        const dt = parseDate(d);
+        const lbl = d === hoje ? `Hoje ${d} (${dias[dt.getDay()]})` : labelData(d);
+        return `<button class="btn-data${d===dataProg?' btn-data-ativa':''}" onclick="selecionarProg('${d}')">${lbl}</button>`;
+      }).join('');
+
+      if (!dataProg) return;
+      const lancs = todosLanc.filter(r => r.DATA === dataProg);
       if (!lancs.length) {
-        lista.innerHTML = `<div style="text-align:center;padding:40px;color:var(--muted)">Nenhum lançamento TL em ${data}.</div>`;
+        lista.innerHTML = `<div class="empty-msg">📅 Nenhum lançamento para ${labelData(dataProg)}.</div>`;
         return;
       }
-      lancs.sort((a,b) => (a.VEICULO||'').localeCompare(b.VEICULO||''));
+      lista.innerHTML = `<div style="overflow-x:auto"><table>
+        <thead><tr><th>Veículo</th><th>Motorista</th><th>Destino</th><th>Ponto ON</th><th>Saída CD</th><th>Status</th></tr></thead>
+        <tbody>${lancs.map(v => {
+          const st = calcStatus(v);
+          return `<tr>
+            <td class="col-placa">${v.VEICULO||'—'}</td>
+            <td>${v.MOTORISTA||'—'}</td>
+            <td class="col-dest">${v.DESTINO||'—'}</td>
+            <td class="mono">${v.PONTO_ON||'—'}</td>
+            <td class="mono">${v.SAIDA_VEICULO_CD||'—'}</td>
+            <td><span class="st-dot" style="background:${st.cor}"></span>${st.label}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>`;
+    }
+
+    window.selecionarProg = (d) => { dataProg=d; renderProgramacao(); };
+
+    // ── Histórico ─────────────────────────────────────────────
+    function renderHistorico() {
+      const picker = document.getElementById('hist-picker');
+      const lista  = document.getElementById('hist-lista');
+      if (!picker) return;
+
+      const hoje = hojeISO();
+      const passadas = historicoDatas.filter(d => parseDate(d) < parseDate(hoje));
+      const dias = ['dom','seg','ter','qua','qui','sex','sáb'];
+
+      if (!passadas.length) {
+        picker.innerHTML = '<div style="color:var(--muted);font-size:13px">Nenhum histórico disponível.</div>';
+        return;
+      }
+      picker.innerHTML = passadas.map(d => {
+        const dt = parseDate(d);
+        return `<button class="btn-data${d===historicoDataSel?' btn-data-ativa':''}" onclick="selecionarHistorico('${d}')">${d} (${dias[dt.getDay()]})</button>`;
+      }).join('');
+
+      if (!historicoDataSel) { lista.innerHTML=''; return; }
+      const lancs = todosLanc.filter(r => r.DATA === historicoDataSel);
+      if (!lancs.length) {
+        lista.innerHTML = `<div class="empty-msg">Nenhum lançamento em ${historicoDataSel}.</div>`;
+        return;
+      }
+      const dias2 = ['dom','seg','ter','qua','qui','sex','sáb'];
+      const dt2 = parseDate(historicoDataSel);
       lista.innerHTML = `
-        <div style="font-size:13px;color:var(--muted);margin-bottom:12px">${data} (${dias[dt.getDay()]}) — ${lancs.length} veículo${lancs.length!==1?'s':''}</div>
-        <div style="overflow-x:auto">
-        <table>
-          <thead><tr>
-            <th>Veículo</th><th>Motorista</th><th>Destino</th>
-            <th>Ponto ON</th><th>Saída CD</th><th>Chegada CD</th>
-            <th>KM Perc.</th><th>Hora Total</th><th>Status</th>
-          </tr></thead>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:12px">${historicoDataSel} (${dias2[dt2.getDay()]}) — ${lancs.length} lançamento${lancs.length!==1?'s':''}</div>
+        <div style="overflow-x:auto"><table>
+          <thead><tr><th>Veículo</th><th>Motorista</th><th>Destino</th><th>Ponto ON</th><th>Saída CD</th><th>Chegada CD</th><th>KM</th><th>Hora Total</th><th>Status</th></tr></thead>
           <tbody>${lancs.map(v => {
             const st = calcStatus(v);
             return `<tr>
               <td class="col-placa">${v.VEICULO||'—'}</td>
               <td>${v.MOTORISTA||'—'}</td>
-              <td style="font-size:12px;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.DESTINO||'—'}</td>
+              <td class="col-dest">${v.DESTINO||'—'}</td>
               <td class="mono">${v.PONTO_ON||'—'}</td>
               <td class="mono">${v.SAIDA_VEICULO_CD||'—'}</td>
               <td class="mono">${v.CHEGADA_VEICULO_CD||'—'}</td>
               <td class="mono">${v.KM_PERCORRIDO?v.KM_PERCORRIDO+' km':'—'}</td>
-              <td class="mono">${v.HORA_TOTAL_MOTORISTA||'—'}</td>
+              <td class="mono">${v.HORA_TOTAL||'—'}</td>
               <td><span class="st-dot" style="background:${st.cor}"></span>${st.label}</td>
             </tr>`;
           }).join('')}</tbody>
         </table></div>`;
     }
 
-    function renderCards() {
-      $('c-total').textContent     = todosLanc.length;
-      $('c-concluido').textContent = todosLanc.filter(v=>calcStatus(v).key==='concluido').length;
-      $('c-rota').textContent      = todosLanc.filter(v=>['rota','transito','iniciado'].includes(calcStatus(v).key)).length;
-      $('c-pendente').textContent  = todosLanc.filter(v=>calcStatus(v).key==='pendente').length;
-    }
+    window.selecionarHistorico = (d) => { historicoDataSel=d; renderHistorico(); };
 
-    function renderTabela() {
-      const lista = [...todosLanc].sort((a,b) => {
-        const ord={pendente:0,iniciado:1,transito:2,rota:3,concluido:4};
-        return (ord[calcStatus(a).key]||0) - (ord[calcStatus(b).key]||0);
+    // ── Abas ──────────────────────────────────────────────────
+    window.irAba = (aba) => {
+      abaPainel = aba;
+      ['dashboard','programacao','historico'].forEach(a => {
+        const btn = document.getElementById('aba-'+a);
+        const sec = document.getElementById('sec-'+a);
+        if(btn) btn.classList.toggle('ativa', a===aba);
+        if(sec) sec.style.display = a===aba ? 'block' : 'none';
       });
-      const tbody = $('tbody');
-      $('cnt-label').textContent = `${lista.length} veículo${lista.length!==1?'s':''}`;
-      if (!lista.length) {
-        tbody.innerHTML = `<tr><td colspan="8" class="empty-row">Nenhum veículo em operação hoje.</td></tr>`;
-        return;
-      }
-      tbody.innerHTML = lista.map(v => {
-        const st = calcStatus(v);
-        return `<tr class="tr-data" onclick="abrirDetalhe('${v.fid}','hoje')">
-          <td class="col-placa">${v.VEICULO||'—'}</td>
-          <td>${v.MOTORISTA||'—'}</td>
-          <td style="font-size:12px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.DESTINO||'—'}</td>
-          <td class="mono">${v.PONTO_ON||'—'}</td>
-          <td class="mono">${v.SAIDA_VEICULO_CD||'—'}</td>
-          <td class="mono">${v.CHEGADA_VEICULO_CD||'—'}</td>
-          <td class="mono">${v.KM_PERCORRIDO?v.KM_PERCORRIDO+' km':'—'}</td>
-          <td><span class="st-dot" style="background:${st.cor}"></span>${st.label}</td>
-        </tr>`;
-      }).join('');
-    }
-
-    function renderDatePicker() {
-      const c = $('date-picker'); if(!c) return;
-      c.innerHTML = [0,1,2,3].map(n => {
-        const iso = dataFutura(n);
-        const lbl = n===0 ? `Hoje ${labelData(iso)}` : labelData(iso);
-        return `<button class="btn-data${iso===dataProg?' btn-data-ativa':''}" onclick="selecionarData('${iso}')">${lbl}</button>`;
-      }).join('');
-    }
-
-    window.selecionarData = (iso) => {
-      dataProg = iso;
-      renderDatePicker();
-      carregarProg();
+      atualizarDashboard();
     };
 
-    function carregarProg() {
-      if (!dataProg) return;
-      if (unsubProg) { unsubProg(); unsubProg=null; }
-      const q = query(collection(db,'lancamentos'), where('DATA','==',dataProg), where('OP','==',OP));
-      unsubProg = onSnapshot(q, snap => {
-        veiculosProg = [];
-        snap.forEach(d => veiculosProg.push({fid:d.id,...d.data()}));
-        renderProgLista();
-      });
-    }
+    // ── Init ──────────────────────────────────────────────────
+    window.addEventListener('DOMContentLoaded', () => {
+      // Relógio
+      const tick = () => {
+        const d = new Date();
+        const el = document.getElementById('relogio');
+        if(el) el.textContent = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      };
+      tick(); setInterval(tick, 1000);
 
-    function renderProgLista() {
-      const lista = $('prog-lista'); if(!lista) return;
-      if (!veiculosProg.length) {
-        lista.innerHTML = `<div style="text-align:center;padding:40px;color:var(--muted)">📅 Nenhum veículo programado para ${labelData(dataProg)}.</div>`;
-        return;
-      }
-      lista.innerHTML = `<table><thead><tr>
-        <th>Veículo</th><th>Motorista</th><th>Ponto ON</th>
-        <th>Saída CD</th><th>Chegada CD</th><th>KM</th><th>Status</th>
-      </tr></thead><tbody>${veiculosProg.map(v => {
-        const st = calcStatus(v);
-        return `<tr class="tr-data" onclick="abrirDetalhe('${v.fid}','prog')">
-          <td class="col-placa">${v.VEICULO||'—'}</td>
-          <td>${v.MOTORISTA||'—'}</td>
-          <td style="font-size:12px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.DESTINO||'—'}</td>
-          <td class="mono">${v.PONTO_ON||'—'}</td>
-          <td class="mono">${v.SAIDA_VEICULO_CD||'—'}</td>
-          <td class="mono">${v.CHEGADA_VEICULO_CD||'—'}</td>
-          <td class="mono">${v.KM_PERCORRIDO?v.KM_PERCORRIDO+' km':'—'}</td>
-          <td><span class="st-dot" style="background:${st.cor}"></span>${st.label}</td>
-        </tr>`;
-      }).join('')}</tbody></table>`;
-    }
+      // Sync inicial + timer
+      sincronizar(false);
+      syncTimer = setInterval(() => sincronizar(true), SYNC_INTERVAL);
+    });
 
-    window.abrirDetalhe = (fid, origem) => {
-      const lista = origem==='prog' ? veiculosProg : todosLanc;
-      const v = lista.find(x=>x.fid===fid);
-      if(!v) return;
-
-      const st = calcStatus(v);
-      const isProg = v.DATA && v.DATA !== hojeISO();
-
-      $('det-titulo').textContent = v.VEICULO||'—';
-      $('det-sub').textContent    = `${v.MOTORISTA||'—'} · ${v.DATA||''}${isProg?' 📅':''}`;
-      $('det-st').innerHTML       = `<span class="st-dot" style="background:${st.cor}"></span>${st.label}`;
-
-      const row = (label, val) => val ? `<div class="det-row"><span class="det-l">${label}</span><span class="det-v">${val}</span></div>` : '';
-      const sep = (label) => `<div class="det-sec">${label}</div>`;
-
-      $('det-campos').innerHTML = `
-        ${sep('📋 Dados da Rota')}
-        ${row('Destino', v.DESTINO)}
-        ${row('Ponto ON', v.PONTO_ON)}
-        ${row('Prev. Refeição', v.PREVISAO_REFEICAO)}
-        ${row('Saída Veículo CD', v.SAIDA_VEICULO_CD)}
-        ${row('SM', v.SM)}
-        ${sep('🏪 Lojas')}
-        ${row('Prev. 1ª Loja', v.LOJA_1)}
-        ${row('Abertura 1ª Loja', v.ABERTURA_1)}
-        ${row('Fechado 1ª Loja', v.FECHADO_1)}
-        ${row('Saída 1ª Loja', v.SAIDA_1)}
-        ${row('Total Loja 1', v.TOTAL_LOJA_1)}
-        ${row('Prev. 2ª Loja', v.LOJA_2)}
-        ${row('Abertura 2ª Loja', v.ABERTURA_2)}
-        ${row('Fechado 2ª Loja', v.FECHADO_2)}
-        ${row('Saída 2ª Loja', v.SAIDA_2)}
-        ${row('Total Loja 2', v.TOTAL_LOJA_2)}
-        ${row('Total Lojas', v.TOTAL_LOJA)}
-        ${sep('🏁 Retorno')}
-        ${row('Chegada Veículo CD', v.CHEGADA_VEICULO_CD)}
-        ${row('Ponto OFF', v.PONTO_OFF_MOT)}
-        ${row('Hora Total', v.HORA_TOTAL_MOTORISTA)}
-        ${row('KM Saída', v.KM_SAIDA)}
-        ${row('KM Chegada', v.KM_CHEGADA)}
-        ${row('KM Percorrido', v.KM_PERCORRIDO ? v.KM_PERCORRIDO+' km' : '')}
-        ${row('Observações', v.OBSERVACOES)}
-      `;
-      $('overlay').style.display='flex';
-    };
-
-    window.fecharDetalhe = () => { $('overlay').style.display='none'; };
-
-    iniciar();
-
-    window.mostrarLegenda = () => { document.getElementById('legenda-overlay').style.display='flex'; };
-    window.fecharLegenda  = () => { document.getElementById('legenda-overlay').style.display='none'; };
+    window.sincronizarManual = () => sincronizar(false);
   </script>
+
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     :root{
       --bg:#080f18;--surf:#0e1a28;--card:#11202f;--bord:#1b2e42;
       --acc:#ff8c42;--text:#dde6ef;--muted:#5a7a99;--danger:#e85555;
     }
+    html,body{height:100vh;overflow:hidden;background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;}
+    .mono{font-family:'JetBrains Mono',monospace;font-size:12px}
 
-    /* ── Layout base ── */
-    html,body{
-      height:100vh;
-      overflow:hidden;
-      background:var(--bg);
-      color:var(--text);
-      font-family:'Barlow',sans-serif;
-    }
-    .mono{font-family:'JetBrains Mono',monospace;font-size:13px}
-
-    /* ── Cabeçalho fixo ── */
-    /* topbar ≈ 66px + abas ≈ 45px = 111px */
-    .site-header{
-      position:fixed;
-      top:0; left:0; right:0;
-      z-index:100;
-      background:var(--surf);
-    }
-    .topbar{
-      display:flex;align-items:center;justify-content:space-between;
-      padding:14px 24px;
-      border-bottom:1px solid var(--bord);
-    }
+    /* ── Header fixo ── */
+    .site-header{position:fixed;top:0;left:0;right:0;z-index:100;background:var(--surf);}
+    .topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--bord);}
     .brand{display:flex;align-items:center;gap:12px}
-    .brand-nome{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:24px;color:var(--acc)}
-    .brand-sub{font-size:12px;color:var(--muted);letter-spacing:1px}
-    .live-badge{background:#c0152a;color:white;font-size:11px;font-weight:900;padding:4px 10px;border-radius:20px;letter-spacing:1px;animation:pulse 1.2s infinite}
+    .brand-nome{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:22px}
+    .brand-sub{font-size:11px;color:var(--muted);letter-spacing:1px}
+    .live-badge{background:#c0152a;color:white;font-size:11px;font-weight:900;padding:3px 10px;border-radius:20px;letter-spacing:1px;animation:pulse 1.2s infinite}
     @keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+    .topbar-r{display:flex;align-items:center;gap:12px}
     #relogio{font-family:'JetBrains Mono',monospace;font-size:20px;color:var(--acc)}
+    #sync-status{font-size:11px;color:var(--muted)}
+    #sync-status.sync-ok{color:#34d399}
+    #sync-status.sync-err{color:var(--danger)}
+    .btn-sync{background:none;border:1px solid var(--bord);color:var(--muted);padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-family:'Barlow',sans-serif}
+    .btn-sync:hover{border-color:var(--acc);color:var(--acc)}
     .abas{display:flex;padding:0 24px;border-bottom:1px solid var(--bord)}
-    .aba-btn{padding:12px 20px;background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);cursor:pointer;font-size:14px;font-weight:500;transition:color .2s}
+    .aba-btn{padding:10px 18px;background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);cursor:pointer;font-size:14px;font-weight:500;transition:color .2s}
     .aba-btn.ativa{color:var(--acc);border-bottom-color:var(--acc)}
     .aba-btn:hover{color:var(--text)}
 
-    /* ── Conteúdo com scroll ── */
-    .site-content{
-      position:fixed;
-      top:111px; left:0; right:0; bottom:0;
-      overflow-y:auto;
-      -webkit-overflow-scrolling:touch;
-    }
+    /* ── Conteúdo ── */
+    /* topbar ≈ 58px + abas ≈ 43px = 101px */
+    .site-content{position:fixed;top:101px;left:0;right:0;bottom:0;overflow-y:auto;-webkit-overflow-scrolling:touch;}
 
-    /* ── Dashboard ── */
-    .resumo{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:20px 24px 0}
-    .cs{background:var(--card);border:1px solid var(--bord);border-radius:12px;padding:18px}
-    .cs .num{font-family:'Barlow Condensed',sans-serif;font-size:44px;font-weight:900;line-height:1}
-    .cs .lbl{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-top:4px}
-    .n-total{color:var(--text)}.n-ok{color:#34d399}.n-rota{color:#fbbf24}.n-pend{color:var(--muted)}
-    .tab-wrap{padding:20px 24px 40px;overflow-x:auto}
-    .cnt-label{font-size:12px;color:var(--muted);margin-bottom:10px}
+    /* ── KPIs em colunas ── */
+    .kpi-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;padding:16px 24px 0}
+    .kpi-card{background:var(--card);border:1px solid var(--bord);border-radius:10px;padding:12px 14px;border-top:3px solid var(--acc)}
+    .kpi-card.verde{border-top-color:#34d399}
+    .kpi-card.amarelo{border-top-color:#fbbf24}
+    .kpi-card.laranja{border-top-color:#f97316}
+    .kpi-card.azul{border-top-color:#4da6ff}
+    .kpi-card.cinza{border-top-color:var(--muted)}
+    .kpi-num{font-family:'Barlow Condensed',sans-serif;font-size:36px;font-weight:900;line-height:1;color:var(--text)}
+    .kpi-card.verde   .kpi-num{color:#34d399}
+    .kpi-card.amarelo .kpi-num{color:#fbbf24}
+    .kpi-card.laranja .kpi-num{color:#f97316}
+    .kpi-card.azul    .kpi-num{color:#4da6ff}
+    .kpi-card.cinza   .kpi-num{color:var(--muted)}
+    .kpi-lbl{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-top:4px}
+
+    /* ── Tabela ── */
+    .tab-wrap{padding:14px 24px 40px;overflow-x:auto}
+    .cnt-label{font-size:12px;color:var(--muted);margin-bottom:8px}
     table{width:100%;border-collapse:collapse}
-    thead th{text-align:left;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);padding:10px 12px;border-bottom:1px solid var(--bord);white-space:nowrap}
-    .tr-data td{padding:11px 12px;border-bottom:1px solid #0d1e2e;font-size:14px;vertical-align:middle}
-    .tr-data:hover{background:#ffffff05;cursor:pointer}
-    .col-placa{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px}
+    thead th{text-align:left;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);padding:9px 12px;border-bottom:1px solid var(--bord);white-space:nowrap}
+    tbody td{padding:10px 12px;border-bottom:1px solid #0d1e2e;font-size:13px;vertical-align:middle}
+    tbody tr:hover{background:#ffffff05}
+    .col-placa{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px}
+    .col-dest{font-size:12px;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .st-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
     .empty-row{text-align:center;padding:60px;color:var(--muted)}
 
-    /* ── Programação ── */
-    #sec-programacao{display:none;padding:20px 24px 40px}
-    #sec-historico{display:none;padding:20px 24px 40px}
-    .hist-date-picker{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+    /* ── Programação / Histórico ── */
+    #sec-programacao,#sec-historico{display:none;padding:16px 24px 40px}
     .date-picker-wrap{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
-    .btn-data{padding:8px 16px;background:var(--card);border:1px solid var(--bord);border-radius:8px;color:var(--muted);font-size:13px;font-family:'Barlow Condensed',sans-serif;font-weight:600;cursor:pointer;transition:all .2s}
+    .btn-data{padding:7px 14px;background:var(--card);border:1px solid var(--bord);border-radius:8px;color:var(--muted);font-size:12px;font-family:'Barlow Condensed',sans-serif;font-weight:600;cursor:pointer;transition:all .2s}
     .btn-data:hover{border-color:var(--acc);color:var(--acc)}
     .btn-data-ativa{background:#ff8c4220!important;border-color:#ff8c42!important;color:#ff8c42!important}
+    .sec-title{font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding-bottom:10px;border-bottom:1px solid var(--bord);margin-bottom:14px}
+    .empty-msg{text-align:center;padding:40px;color:var(--muted);font-size:14px}
 
-    /* ── Overlay detalhe ── */
-    #overlay{display:none;position:fixed;inset:0;background:#000a;z-index:200;align-items:flex-end;justify-content:center}
-    .det-panel{background:var(--surf);border:1px solid var(--bord);border-radius:20px 20px 0 0;width:100%;max-width:600px;max-height:85vh;overflow-y:auto;padding:28px}
-    .det-hd{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px}
-    .det-titulo{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:26px}
-    .det-sub{font-size:13px;color:var(--muted);margin-top:2px}
-    .det-st{display:flex;align-items:center;font-size:13px;margin-top:6px}
-    .btn-fechar{background:none;border:1px solid var(--bord);color:var(--muted);padding:8px 16px;border-radius:8px;cursor:pointer}
-    .det-sec{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding:14px 0 6px;border-bottom:1px solid var(--bord);margin-bottom:8px}
-    .det-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #0d1e2e}
-    .det-l{font-size:12px;color:var(--muted)}.det-v{font-size:13px;font-weight:500;text-align:right}
-
-    @media(max-width:768px){
-      .resumo{grid-template-columns:repeat(2,1fr)}
-      .tab-wrap{padding:12px}
+    @media(max-width:900px){
+      .kpi-grid{grid-template-columns:repeat(4,1fr)}
+    }
+    @media(max-width:600px){
+      .kpi-grid{grid-template-columns:repeat(2,1fr)}
+      .topbar{padding:10px 14px}
       .brand-sub{display:none}
-      /* topbar mobile menor ≈ 56px + abas ≈ 45px = 101px */
-      .site-content{top:101px}
+      #relogio{font-size:16px}
+      .tab-wrap{padding:12px}
+      #sec-programacao,#sec-historico{padding:12px}
     }
   </style>
 </head>
@@ -446,8 +401,11 @@
       </div>
       <span class="live-badge">● AO VIVO</span>
     </div>
-    <button onclick="mostrarLegenda()" style="background:none;border:1px solid var(--bord);color:var(--muted);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px">?</button>
-    <span id="relogio">00:00</span>
+    <div class="topbar-r">
+      <span id="sync-status">Carregando...</span>
+      <button id="btn-sync" class="btn-sync" onclick="sincronizarManual()">🔄 Atualizar</button>
+      <span id="relogio">00:00</span>
+    </div>
   </div>
   <div class="abas">
     <button id="aba-dashboard"   class="aba-btn ativa" onclick="irAba('dashboard')">📊 Dashboard</button>
@@ -456,76 +414,74 @@
   </div>
 </div>
 
-<!-- CONTEÚDO COM SCROLL -->
+<!-- CONTEÚDO -->
 <div class="site-content">
 
   <!-- DASHBOARD -->
   <div id="sec-dashboard">
-    <div class="resumo">
-      <div class="cs"><div class="num n-total"  id="c-total">0</div><div class="lbl">Total hoje</div></div>
-      <div class="cs"><div class="num n-ok"     id="c-concluido">0</div><div class="lbl">Concluídos</div></div>
-      <div class="cs"><div class="num n-rota"   id="c-rota">0</div><div class="lbl">Em operação</div></div>
-      <div class="cs"><div class="num n-pend"   id="c-pendente">0</div><div class="lbl">Pendentes</div></div>
+    <!-- KPIs em 7 colunas -->
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-num" id="kpi-total">—</div>
+        <div class="kpi-lbl">Total hoje</div>
+      </div>
+      <div class="kpi-card verde">
+        <div class="kpi-num" id="kpi-conc">0</div>
+        <div class="kpi-lbl">Concluídos</div>
+      </div>
+      <div class="kpi-card amarelo">
+        <div class="kpi-num" id="kpi-op">0</div>
+        <div class="kpi-lbl">Em operação</div>
+      </div>
+      <div class="kpi-card cinza">
+        <div class="kpi-num" id="kpi-pend">0</div>
+        <div class="kpi-lbl">Pendentes</div>
+      </div>
+      <div class="kpi-card laranja">
+        <div class="kpi-num" id="kpi-transito">0</div>
+        <div class="kpi-lbl">Em trânsito</div>
+      </div>
+      <div class="kpi-card azul">
+        <div class="kpi-num" id="kpi-iniciado">0</div>
+        <div class="kpi-lbl">Iniciados</div>
+      </div>
+      <div class="kpi-card" style="border-top-color:#fbbf24">
+        <div class="kpi-num" id="kpi-rota" style="color:#fbbf24">0</div>
+        <div class="kpi-lbl">Em rota</div>
+      </div>
     </div>
+
     <div class="tab-wrap">
       <div class="cnt-label" id="cnt-label">—</div>
       <table>
         <thead>
-          <tr><th>Veículo</th><th>Motorista</th><th>Destino</th><th>Ponto ON</th><th>Saída CD</th><th>Chegada CD</th><th>KM</th><th>Status</th></tr>
+          <tr>
+            <th>Veículo</th><th>Motorista</th><th>Destino</th>
+            <th>Ponto ON</th><th>Saída CD</th><th>Chegada CD</th>
+            <th>KM</th><th>Status</th>
+          </tr>
         </thead>
-        <tbody id="tbody"><tr><td colspan="8" class="empty-row">Carregando...</td></tr></tbody>
+        <tbody id="tbody">
+          <tr><td colspan="8" class="empty-row">⏳ Carregando...</td></tr>
+        </tbody>
       </table>
     </div>
   </div>
 
   <!-- PROGRAMAÇÃO -->
   <div id="sec-programacao">
-    <div class="date-picker-wrap" id="date-picker"></div>
-    <div id="prog-lista"><div style="text-align:center;padding:40px;color:var(--muted)">Selecione uma data acima</div></div>
+    <div class="sec-title">📅 Programação — selecione a data</div>
+    <div class="date-picker-wrap" id="prog-picker"></div>
+    <div id="prog-lista"><div class="empty-msg">Selecione uma data acima</div></div>
   </div>
 
   <!-- HISTÓRICO -->
   <div id="sec-historico">
-    <div style="font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding-bottom:10px;border-bottom:1px solid var(--bord);margin-bottom:16px">📂 Histórico de Lançamentos TL</div>
-    <p style="font-size:13px;color:var(--muted);margin-bottom:16px">Selecione uma data para ver os lançamentos. Somente leitura.</p>
-    <div class="hist-date-picker" id="hist-date-picker">
-      <div style="color:var(--muted);font-size:13px">Clique na aba para carregar as datas...</div>
-    </div>
+    <div class="sec-title">📂 Histórico de Lançamentos TL — somente leitura</div>
+    <div class="date-picker-wrap" id="hist-picker"></div>
     <div id="hist-lista"></div>
   </div>
 
-</div>
-
-<!-- OVERLAY DETALHE -->
-<div id="overlay" onclick="if(event.target===this)fecharDetalhe()">
-  <div class="det-panel">
-    <div class="det-hd">
-      <div>
-        <div class="det-titulo" id="det-titulo">—</div>
-        <div class="det-sub"    id="det-sub">—</div>
-        <div class="det-st"     id="det-st">—</div>
-      </div>
-      <button class="btn-fechar" onclick="fecharDetalhe()">✕ Fechar</button>
-    </div>
-    <div id="det-campos"></div>
-  </div>
-</div>
-
-<!-- LEGENDA -->
-<div id="legenda-overlay" onclick="if(event.target===this)fecharLegenda()" style="display:none;position:fixed;inset:0;background:#000a;z-index:500;align-items:center;justify-content:center">
-  <div style="background:#0e1a28;border:1px solid #1b2e42;border-radius:16px;padding:28px;width:90%;max-width:400px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-      <span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:20px;color:#dde6ef">📋 Legenda de Status</span>
-      <button onclick="fecharLegenda()" style="background:none;border:1px solid #1b2e42;color:#5a7a99;padding:6px 12px;border-radius:6px;cursor:pointer">✕</button>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:12px">
-      <div style="display:flex;align-items:center;gap:12px"><span style="width:12px;height:12px;border-radius:50%;background:#6b8099;flex-shrink:0"></span><div><strong style="color:#dde6ef">Pendente</strong><div style="font-size:12px;color:#5a7a99">Lançamento programado — horário de saída ainda não chegou</div></div></div>
-      <div style="display:flex;align-items:center;gap:12px"><span style="width:12px;height:12px;border-radius:50%;background:#4da6ff;flex-shrink:0"></span><div><strong style="color:#dde6ef">Iniciado</strong><div style="font-size:12px;color:#5a7a99">Motorista bateu o ponto — ainda no CD aguardando saída</div></div></div>
-      <div style="display:flex;align-items:center;gap:12px"><span style="width:12px;height:12px;border-radius:50%;background:#f97316;flex-shrink:0"></span><div><strong style="color:#dde6ef">Em trânsito</strong><div style="font-size:12px;color:#5a7a99">Veículo saiu do CD e está a caminho da loja</div></div></div>
-      <div style="display:flex;align-items:center;gap:12px"><span style="width:12px;height:12px;border-radius:50%;background:#fbbf24;flex-shrink:0"></span><div><strong style="color:#dde6ef">Em rota</strong><div style="font-size:12px;color:#5a7a99">Veículo está na loja realizando a entrega</div></div></div>
-      <div style="display:flex;align-items:center;gap:12px"><span style="width:12px;height:12px;border-radius:50%;background:#34d399;flex-shrink:0"></span><div><strong style="color:#dde6ef">Concluído</strong><div style="font-size:12px;color:#5a7a99">Veículo retornou ao CD e KM registrado</div></div></div>
-    </div>
-  </div>
 </div>
 </body>
 </html>
