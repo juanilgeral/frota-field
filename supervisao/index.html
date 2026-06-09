@@ -371,12 +371,17 @@
       return {key:'pendente',label:'Pendente',cor:'#6b8099'};
     }
 
+    function escalado(v) {
+      return !!(v.MOTORISTA && v.MOTORISTA.trim() && v.DESTINO && v.DESTINO.trim());
+    }
+
     function renderCards() {
-      $('c-total').textContent     = todosLanc.length;
-      $('c-concluido').textContent = todosLanc.filter(v=>calcStatus(v).key==='concluido').length;
-      $('c-rota').textContent      = todosLanc.filter(v=>['rota','transito','iniciado'].includes(calcStatus(v).key)).length;
-      $('c-pendente').textContent  = todosLanc.filter(v=>calcStatus(v).key==='pendente').length;
-      ['LS','TL','HT','CV'].forEach(op => { const el=$('op-'+op); if(el) el.textContent=todosLanc.filter(v=>v.OP===op).length; });
+      const esc = todosLanc.filter(escalado);
+      $('c-total').textContent     = esc.length;
+      $('c-concluido').textContent = esc.filter(v=>calcStatus(v).key==='concluido').length;
+      $('c-rota').textContent      = esc.filter(v=>['rota','transito','iniciado'].includes(calcStatus(v).key)).length;
+      $('c-pendente').textContent  = esc.filter(v=>calcStatus(v).key==='pendente').length;
+      ['LS','TL','HT','CV'].forEach(op => { const el=$('op-'+op); if(el) el.textContent=esc.filter(v=>v.OP===op).length; });
     }
 
     window.setFiltroOp = op => {
