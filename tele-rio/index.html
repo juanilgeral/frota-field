@@ -120,7 +120,7 @@
     function parseDateHist(iso) {
       const [dd,mm,aa] = iso.split('/');
       const ano = aa.length === 2 ? '20'+aa : aa;
-      return new Date(`${ano}-${mm}-${dd}`);
+      return new Date(parseInt(ano), parseInt(mm)-1, parseInt(dd));
     }
 
     function iniciarHistorico() {
