@@ -96,7 +96,10 @@
     }
 
     function escalado(v) {
-      return !!(v.MOTORISTA && v.MOTORISTA.trim() && v.DESTINO && v.DESTINO.trim());
+      if (!v.MOTORISTA || !v.MOTORISTA.trim()) return false;
+      if (!v.DESTINO || !v.DESTINO.trim()) return false;
+      if (/RESERVA/i.test(v.VEICULO) || /RESERVA/i.test(v.MOTORISTA) || /RESERVA/i.test(v.DESTINO)) return false;
+      return true;
     }
 
     // ── Sync ──────────────────────────────────────────────────
