@@ -8,211 +8,90 @@
   <title>Frota — Diretoria</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@300;400;500&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <script type="module">
-    import { initializeApp }   from "https://www.gstatic.com/firebasejs/11.8.1/firebase-app.js";
-    import { getFirestore, collection, query, where, onSnapshot, getDocs }
-                               from "https://www.gstatic.com/firebasejs/11.8.1/firebase-firestore.js";
 
-    const FIREBASE_CONFIG = {
-      apiKey:            "AIzaSyA211lxR6Nk3bWH8lJWzYkHTMnlfHPar8A",
-      authDomain:        "frota-field.firebaseapp.com",
-      projectId:         "frota-field",
-      storageBucket:     "frota-field.firebasestorage.app",
-      messagingSenderId: "642844753455",
-      appId:             "1:642844753455:web:9be3f31a8bb735dfbd50da"
-    };
+  <script>
+    const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTd77MkT5hd6gzTkMfzX2BVWY5Hqqfo3NluQY58mnOklN8--hPVIoe2CfzkbttnucJKbnJFiaPEWSmR/pub?gid=1559964021&single=true&output=csv';
+    const SYNC_INTERVAL = 5 * 60 * 1000;
+    const OP_CORES = {LS:'#e84040', TL:'#2ed573', HT:'#27ae60', CV:'#f5d800'};
 
-    const OP_CORES = {LS:'#e84040',TL:'#1a7a4a',HT:'#2ed573',CV:'#f5d800'};
-
-    const app = initializeApp(FIREBASE_CONFIG);
-    const db  = getFirestore(app);
-
-    let todosLanc    = [];
-    let todosUsers   = [];
-    let filtroOp     = 'TODAS';
-    let abaPainel    = 'dashboard';
-    let dataProg     = null;
-    let veiculosProg = [];
-    let unsubProg    = null;
-
-    const $ = id => document.getElementById(id);
-
-    function nowBR() {
-      return new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Sao_Paulo'}));
-    }
-    function hojeISO() {
-      const d = nowBR();
-      return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getFullYear()).slice(-2)}`;
-    }
-    function dataFutura(n) {
-      const d = nowBR();
-      d.setDate(d.getDate() + n);
-      return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getFullYear()).slice(-2)}`;
-    }
-    function labelData(iso) {
-      const [dd,mm,aa] = iso.split('/');
-      const d = new Date(2000+parseInt(aa), parseInt(mm)-1, parseInt(dd));
-      const dias = ['dom','seg','ter','qua','qui','sex','sáb'];
-      return `${dd}/${mm} (${dias[d.getDay()]})`;
-    }
-
-    function iniciar() {
-      iniciarRelogio();
-      escutarLancamentos();
-      escutarUsuarios();
-      dataProg = dataFutura(1);
-    }
-
-    function iniciarRelogio() {
-      const el = $('relogio');
-      const tick = () => {
-        const d = new Date();
-        if(el) el.textContent = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-      };
-      tick(); setInterval(tick,1000);
-    }
-
-    function escutarLancamentos() {
-      onSnapshot(
-        query(collection(db,'lancamentos'), where('DATA','==',hojeISO())),
-        snap => {
-          todosLanc = [];
-          snap.forEach(d => todosLanc.push({fid:d.id,...d.data()}));
-          renderCards(); renderTabela();
-        }
-      );
-    }
-
-    function escutarUsuarios() {
-      onSnapshot(collection(db,'usuarios'), snap => {
-        todosUsers = [];
-        snap.forEach(d => todosUsers.push({uid:d.id,...d.data()}));
-        renderUsuarios();
-      });
-    }
-
-    window.irAba = (aba) => {
-      abaPainel = aba;
-      ['dashboard','programacao','usuarios','historico'].forEach(a => {
-        const btn = $('aba-'+a);
-        const sec = $('sec-'+a);
-        if(btn) btn.classList.toggle('ativa', a===aba);
-        if(sec) sec.style.display = a===aba ? 'block' : 'none';
-      });
-      if (aba==='programacao') {
-        dataProg = dataProg || dataFutura(1);
-        renderDatePicker();
-        carregarProg();
-      }
-      if (aba==='historico') { iniciarHistorico(); }
-    };
-
-    // ── HISTÓRICO ─────────────────────────────────────────────
+    let todosLanc = [];
+    let filtroOp = 'TODAS';
+    let abaPainel = 'dashboard';
     let historicoDatas = [];
     let historicoDataSel = null;
+    let dataProg = null;
 
-    function parseDateHist(iso) {
-      const [dd,mm,aa] = iso.split('/');
-      const ano = aa.length === 2 ? '20'+aa : aa;
-      return new Date(parseInt(ano), parseInt(mm)-1, parseInt(dd));
+    // ── CSV ───────────────────────────────────────────────────
+    async function fetchCSV() {
+      const resp = await fetch(CSV_URL + '&cachebust=' + Date.now());
+      const text = await resp.text();
+      const lines = text.split(/\r?\n/).filter(l => l.trim());
+      if (lines.length < 2) return [];
+      return lines.slice(1).map(parseLine);
     }
 
-    function iniciarHistorico() {
-      if (historicoDatas.length) { renderHistoricoDatePicker(); return; }
-      const el = $('hist-lista');
-      if(el) el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">⏳ Carregando datas...</div>';
-      getDocs(query(collection(db,'lancamentos'))).then(snap => {
-        const datasSet = new Set();
-        snap.forEach(d => { const data = d.data().DATA; if(data) datasSet.add(data); });
-        historicoDatas = [...datasSet].filter(d => /^\d{2}\/\d{2}\/\d{2,4}$/.test(d)).sort((a,b) => parseDateHist(b) - parseDateHist(a));
-        renderHistoricoDatePicker();
-      }).catch(() => { if(el) el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--danger)">Erro ao carregar datas.</div>'; });
-    }
-
-    function renderHistoricoDatePicker() {
-      const c = $('hist-date-picker'); if(!c) return;
-      const hoje = hojeISO();
-      const passadas = historicoDatas.filter(d => {
-        const [dd,mm,aa] = d.split('/'); const [hdd,hmm,haa] = hoje.split('/');
-        const ano = aa.length===2?'20'+aa:aa; const hano = haa.length===2?'20'+haa:haa;
-        return `${ano}${mm}${dd}` < `${hano}${hmm}${hdd}`;
-      });
-      if (!passadas.length) { c.innerHTML = '<div style="color:var(--muted);font-size:13px">Nenhum histórico disponível.</div>'; return; }
-      const dias = ['dom','seg','ter','qua','qui','sex','sáb'];
-      c.innerHTML = passadas.map(d => {
-        const dt = parseDateHist(d);
-        return `<button class="btn-data${d===historicoDataSel?' btn-data-ativa':''}" onclick="selecionarHistorico('${d}')">${d} (${dias[dt.getDay()]})</button>`;
-      }).join('');
-    }
-
-    window.selecionarHistorico = (data) => {
-      historicoDataSel = data;
-      renderHistoricoDatePicker();
-      carregarHistorico(data);
-    };
-
-    function carregarHistorico(data) {
-      const lista = $('hist-lista'); if(!lista) return;
-      lista.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">⏳ Carregando...</div>';
-      getDocs(query(collection(db,'lancamentos'), where('DATA','==',data))).then(snap => {
-        const lancs = [];
-        snap.forEach(d => lancs.push({fid:d.id,...d.data()}));
-        renderHistoricoTabela(lancs, data);
-      }).catch(() => { lista.innerHTML = '<div style="text-align:center;padding:40px;color:var(--danger)">Erro ao carregar.</div>'; });
-    }
-
-    function renderHistoricoTabela(lancs, data) {
-      const lista = $('hist-lista'); if(!lista) return;
-      const dias = ['dom','seg','ter','qua','qui','sex','sáb'];
-      const dt = parseDateHist(data);
-      if (!lancs.length) {
-        lista.innerHTML = `<div style="text-align:center;padding:40px;color:var(--muted)">Nenhum lançamento em ${data}.</div>`;
-        return;
+    function parseLine(line) {
+      const cols = []; let cur = '', inQ = false;
+      for (let i = 0; i < line.length; i++) {
+        const c = line[i];
+        if (c === '"') { if (inQ && line[i+1]==='"') { cur+='"'; i++; } else inQ=!inQ; }
+        else if (c === ',' && !inQ) { cols.push(cur.trim()); cur=''; }
+        else cur += c;
       }
-      lancs.sort((a,b) => (a.OP||'').localeCompare(b.OP||'') || (a.VEICULO||'').localeCompare(b.VEICULO||''));
-      lista.innerHTML = `
-        <div style="font-size:13px;color:var(--muted);margin-bottom:12px">${data} (${dias[dt.getDay()]}) — ${lancs.length} lançamento${lancs.length!==1?'s':''}</div>
-        <div style="overflow-x:auto">
-        <table>
-          <thead><tr>
-            <th>OP</th><th>Veículo</th><th>Motorista</th><th>Destino</th>
-            <th>Ponto ON</th><th>Saída CD</th><th>Chegada CD</th>
-            <th>KM Perc.</th><th>Hora Total</th><th>Status</th>
-          </tr></thead>
-          <tbody>${lancs.map(v => {
-            const st = calcStatus(v);
-            const cor = {LS:'#e84040',TL:'#1a7a4a',HT:'#2ed573',CV:'#f5d800'}[v.OP]||'#6b8099';
-            return `<tr>
-              <td><span class="op-pill" style="background:${cor}20;color:${cor}">${v.OP||'—'}</span></td>
-              <td class="col-placa">${v.VEICULO||'—'}</td>
-              <td>${v.MOTORISTA||'—'}</td>
-              <td style="font-size:12px;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.DESTINO||'—'}</td>
-              <td class="mono">${v.PONTO_ON||'—'}</td>
-              <td class="mono">${v.SAIDA_VEICULO_CD||'—'}</td>
-              <td class="mono">${v.CHEGADA_VEICULO_CD||'—'}</td>
-              <td class="mono">${v.KM_PERCORRIDO?v.KM_PERCORRIDO+' km':'—'}</td>
-              <td class="mono">${v.HORA_TOTAL_MOTORISTA||'—'}</td>
-              <td><span class="st-dot" style="background:${st.cor}"></span>${st.label}</td>
-            </tr>`;
-          }).join('')}</tbody>
-        </table></div>`;
+      cols.push(cur.trim());
+      return {
+        DATA:               cols[0]  || '',
+        DIA:                cols[1]  || '',
+        OP:                 cols[2]  || '',
+        VEICULO:            cols[3]  || '',
+        MOTORISTA:          cols[4]  || '',
+        PONTO_ON:           cols[5]  || '',
+        PREVISAO_REFEICAO:  cols[6]  || '',
+        DESTINO:            cols[9]  || '',
+        SAIDA_VEICULO_CD:   cols[10] || '',
+        SM:                 cols[12] || '',
+        ABERTURA_1:         cols[18] || '',
+        SAIDA_1:            cols[20] || '',
+        CHEGADA_VEICULO_CD: cols[29] || '',
+        PONTO_OFF_MOT:      cols[30] || '',
+        HORA_TOTAL:         cols[31] || '',
+        KM_CHEGADA:         cols[33] || '',
+        KM_PERCORRIDO:      cols[35] || '',
+      };
     }
 
-    function calcStatus(v) {
-      const agora  = new Date(new Date().toLocaleString('en-US', {timeZone: 'America/Sao_Paulo'}));
-      const hMin   = agora.getHours()*60 + agora.getMinutes();
-      const tMin   = t => { if(!t) return null; const p=t.split(':').map(Number); return p[0]*60+(p[1]||0); };
-      const isHoje = !v.DATA || v.DATA === hojeISO();
+    // ── Datas ─────────────────────────────────────────────────
+    function hojeISO() {
+      const d = new Date(new Date().toLocaleString('en-US', {timeZone:'America/Sao_Paulo'}));
+      return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getFullYear()).slice(-2)}`;
+    }
+    function dataFuturaISO(n) {
+      const d = new Date(new Date().toLocaleString('en-US', {timeZone:'America/Sao_Paulo'}));
+      d.setDate(d.getDate()+n);
+      return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getFullYear()).slice(-2)}`;
+    }
+    function parseDate(iso) {
+      const [dd,mm,aa] = iso.split('/');
+      return new Date(parseInt(aa.length===2?'20'+aa:aa), parseInt(mm)-1, parseInt(dd));
+    }
+    function labelData(iso) {
+      const dias = ['dom','seg','ter','qua','qui','sex','sáb'];
+      return `${iso} (${dias[parseDate(iso).getDay()]})`;
+    }
 
+    // ── Status ────────────────────────────────────────────────
+    function calcStatus(v) {
+      const agora = new Date(new Date().toLocaleString('en-US',{timeZone:'America/Sao_Paulo'}));
+      const hMin  = agora.getHours()*60+agora.getMinutes();
+      const tMin  = t => { if(!t) return null; const p=t.split(':').map(Number); return p[0]*60+(p[1]||0); };
+      const isHoje = v.DATA === hojeISO();
       if (v.CHEGADA_VEICULO_CD && v.KM_CHEGADA) return {key:'concluido', label:'Concluído',   cor:'#34d399'};
       if (v.SAIDA_1 || v.ABERTURA_1)            return {key:'rota',      label:'Em rota',     cor:'#fbbf24'};
-      // Iniciado e Em trânsito só se SAIDA_VEICULO_CD estiver preenchida
       const saidaMin = tMin(v.SAIDA_VEICULO_CD);
       if (saidaMin !== null) {
         if (isHoje && hMin >= saidaMin) return {key:'transito', label:'Em trânsito', cor:'#f97316'};
         return {key:'iniciado', label:'Iniciado', cor:'#4da6ff'};
       }
-
       return {key:'pendente', label:'Pendente', cor:'#6b8099'};
     }
 
@@ -220,49 +99,89 @@
       return !!(v.MOTORISTA && v.MOTORISTA.trim() && v.DESTINO && v.DESTINO.trim());
     }
 
-    function renderCards() {
-      // KPIs principais: só veículos com motorista E destino preenchidos
-      const lancEscalados = todosLanc.filter(escalado);
-      $('c-total').textContent     = lancEscalados.length;
-      $('c-concluido').textContent = lancEscalados.filter(v=>calcStatus(v).key==='concluido').length;
-      $('c-rota').textContent      = lancEscalados.filter(v=>['rota','transito','iniciado'].includes(calcStatus(v).key)).length;
-      $('c-pendente').textContent  = lancEscalados.filter(v=>calcStatus(v).key==='pendente').length;
-      // Contagem por OP: só escalados
-      ['LS','TL','HT','CV'].forEach(op => {
-        const el = $('op-'+op);
-        if(el) el.textContent = lancEscalados.filter(v=>v.OP===op).length;
-      });
+    // ── Sync ──────────────────────────────────────────────────
+    async function sincronizar(silencioso) {
+      const btnEl = document.getElementById('btn-sync');
+      const statusEl = document.getElementById('sync-status');
+      if (!silencioso && btnEl) { btnEl.disabled=true; btnEl.textContent='⏳ Atualizando...'; }
+      try {
+        const linhas = await fetchCSV();
+        todosLanc = linhas.filter(r => r.OP && r.DATA && r.VEICULO);
+        const datasSet = new Set(todosLanc.map(r=>r.DATA));
+        historicoDatas = [...datasSet].filter(d=>/^\d{2}\/\d{2}\/\d{2,4}$/.test(d))
+          .sort((a,b) => parseDate(b)-parseDate(a));
+        if (!dataProg) dataProg = dataFuturaISO(1);
+        atualizarDashboard();
+        const agora = new Date().toLocaleTimeString('pt-BR');
+        if (statusEl) { statusEl.textContent=`✅ ${agora}`; statusEl.className='sync-ok'; }
+      } catch(e) {
+        if (statusEl) { statusEl.textContent='❌ Erro'; statusEl.className='sync-err'; }
+      }
+      if (!silencioso && btnEl) { btnEl.disabled=false; btnEl.textContent='🔄 Atualizar'; }
     }
 
-    window.setFiltroOp = op => {
-      filtroOp = op;
-      document.querySelectorAll('.btn-op').forEach(b => b.classList.toggle('ativo', b.dataset.op===op));
-      renderTabela();
-    };
+    function atualizarDashboard() {
+      if (abaPainel==='dashboard')   renderDashboard();
+      else if (abaPainel==='programacao') renderProgramacao();
+      else if (abaPainel==='historico')   renderHistorico();
+    }
 
-    function renderTabela() {
-      // Tabela mostra só veículos com motorista E destino preenchidos
-      let lista = [...todosLanc].filter(escalado);
-      if (filtroOp !== 'TODAS') lista = lista.filter(v=>v.OP===filtroOp);
-      lista.sort((a,b) => {
-        const ord={pendente:0,iniciado:1,transito:2,rota:3,concluido:4};
-        return (ord[calcStatus(a).key]||0) - (ord[calcStatus(b).key]||0);
-      });
-      const tbody = $('tbody');
+    // ── Dashboard ─────────────────────────────────────────────
+    function renderDashboard() {
+      const hoje = hojeISO();
+      const lancHoje = todosLanc.filter(r => r.DATA === hoje);
+      const esc = lancHoje.filter(escalado);
+
+      // KPIs principais
+      document.getElementById('kpi-total').textContent   = esc.length || '—';
+      document.getElementById('kpi-conc').textContent    = esc.filter(v=>calcStatus(v).key==='concluido').length;
+      document.getElementById('kpi-op').textContent      = esc.filter(v=>['rota','transito','iniciado'].includes(calcStatus(v).key)).length;
+      document.getElementById('kpi-pend').textContent    = esc.filter(v=>calcStatus(v).key==='pendente').length;
+
+      // Barras por OP
+      const opBar = document.getElementById('op-bar');
+      if (opBar) {
+        const ops = ['LS','TL','HT','CV'];
+        opBar.innerHTML = ops.map(op => {
+          const n = esc.filter(v=>v.OP===op).length;
+          const cor = OP_CORES[op]||'#6b8099';
+          return `<div class="op-card" style="border-left:4px solid ${cor}">
+            <span class="op-sig" style="color:${cor}">${op}</span>
+            <span class="op-cnt" style="color:${cor}">${n}</span>
+          </div>`;
+        }).join('');
+      }
+
+      // Filtros
+      document.querySelectorAll('.btn-op').forEach(b =>
+        b.classList.toggle('ativo', b.dataset.op === filtroOp)
+      );
+
+      renderTabela(esc);
+    }
+
+    function renderTabela(esc) {
+      let lista = filtroOp === 'TODAS' ? [...esc] : esc.filter(v=>v.OP===filtroOp);
+      const ord = {pendente:0,iniciado:1,transito:2,rota:3,concluido:4};
+      lista.sort((a,b)=>(ord[calcStatus(a).key]||0)-(ord[calcStatus(b).key]||0));
+
+      const cnt = document.getElementById('cnt-label');
+      if (cnt) cnt.textContent = `${lista.length} registro${lista.length!==1?'s':''}`;
+
+      const tbody = document.getElementById('tbody');
+      if (!tbody) return;
       if (!lista.length) {
-        tbody.innerHTML = `<tr><td colspan="8" class="empty-row">Nenhum lançamento encontrado</td></tr>`;
-        $('cnt-label').textContent = '0 registros';
+        tbody.innerHTML = `<tr><td colspan="9" class="empty-row">Nenhum lançamento encontrado.</td></tr>`;
         return;
       }
-      $('cnt-label').textContent = `${lista.length} registro${lista.length>1?'s':''}`;
       tbody.innerHTML = lista.map(v => {
         const st  = calcStatus(v);
         const cor = OP_CORES[v.OP]||'#6b8099';
-        return `<tr class="tr-data" onclick="abrirDetalhe('${v.fid}','hoje')">
+        return `<tr>
           <td><span class="op-pill" style="background:${cor}20;color:${cor}">${v.OP||'—'}</span></td>
           <td class="col-placa">${v.VEICULO||'—'}</td>
           <td>${v.MOTORISTA||'—'}</td>
-          <td style="font-size:12px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.DESTINO||'—'}</td>
+          <td class="col-dest">${v.DESTINO||'—'}</td>
           <td class="mono">${v.PONTO_ON||'—'}</td>
           <td class="mono">${v.SAIDA_VEICULO_CD||'—'}</td>
           <td class="mono">${v.CHEGADA_VEICULO_CD||'—'}</td>
@@ -272,268 +191,179 @@
       }).join('');
     }
 
-    function renderDatePicker() {
-      const c = $('date-picker'); if(!c) return;
-      c.innerHTML = [0,1,2,3].map(n => {
-        const iso = dataFutura(n);
-        const lbl = n===0 ? `Hoje ${labelData(iso)}` : labelData(iso);
-        return `<button class="btn-data${iso===dataProg?' btn-data-ativa':''}" onclick="selecionarData('${iso}')">${lbl}</button>`;
+    window.setFiltroOp = (op) => { filtroOp=op; renderDashboard(); };
+
+    // ── Programação ───────────────────────────────────────────
+    function renderProgramacao() {
+      const picker = document.getElementById('prog-picker');
+      const lista  = document.getElementById('prog-lista');
+      if (!picker||!lista) return;
+      const hoje = hojeISO();
+      const futuras = historicoDatas.filter(d => parseDate(d) >= parseDate(hoje));
+      const dias = ['dom','seg','ter','qua','qui','sex','sáb'];
+      picker.innerHTML = futuras.map(d => {
+        const lbl = d===hoje ? `Hoje ${d} (${dias[parseDate(d).getDay()]})` : labelData(d);
+        return `<button class="btn-data${d===dataProg?' btn-data-ativa':''}" onclick="selecionarProg('${d}')">${lbl}</button>`;
       }).join('');
-    }
-
-    window.selecionarData = (iso) => {
-      dataProg = iso;
-      renderDatePicker();
-      carregarProg();
-    };
-
-    function carregarProg() {
       if (!dataProg) return;
-      if (unsubProg) { unsubProg(); unsubProg=null; }
-      const q = query(collection(db,'lancamentos'), where('DATA','==',dataProg));
-      unsubProg = onSnapshot(q, snap => {
-        veiculosProg = [];
-        snap.forEach(d => veiculosProg.push({fid:d.id,...d.data()}));
-        renderProgLista();
+      let lancs = todosLanc.filter(r=>r.DATA===dataProg);
+      if (filtroOp!=='TODAS') lancs = lancs.filter(v=>v.OP===filtroOp);
+      if (!lancs.length) { lista.innerHTML=`<div class="empty-msg">Nenhum lançamento para ${labelData(dataProg)}.</div>`; return; }
+      lista.innerHTML=`<div style="overflow-x:auto"><table>
+        <thead><tr><th>OP</th><th>Veículo</th><th>Motorista</th><th>Destino</th><th>Ponto ON</th><th>Saída CD</th><th>Status</th></tr></thead>
+        <tbody>${lancs.map(v=>{
+          const st=calcStatus(v); const cor=OP_CORES[v.OP]||'#6b8099';
+          return `<tr>
+            <td><span class="op-pill" style="background:${cor}20;color:${cor}">${v.OP||'—'}</span></td>
+            <td class="col-placa">${v.VEICULO||'—'}</td>
+            <td>${v.MOTORISTA||'—'}</td>
+            <td class="col-dest">${v.DESTINO||'—'}</td>
+            <td class="mono">${v.PONTO_ON||'—'}</td>
+            <td class="mono">${v.SAIDA_VEICULO_CD||'—'}</td>
+            <td><span class="st-dot" style="background:${st.cor}"></span>${st.label}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>`;
+    }
+    window.selecionarProg = (d) => { dataProg=d; renderProgramacao(); };
+
+    // ── Histórico ─────────────────────────────────────────────
+    function renderHistorico() {
+      const picker = document.getElementById('hist-picker');
+      const lista  = document.getElementById('hist-lista');
+      if (!picker) return;
+      const hoje = hojeISO();
+      const passadas = historicoDatas.filter(d=>parseDate(d)<parseDate(hoje));
+      const dias = ['dom','seg','ter','qua','qui','sex','sáb'];
+      if (!passadas.length) { picker.innerHTML='<div style="color:var(--muted);font-size:13px">Nenhum histórico.</div>'; return; }
+      picker.innerHTML = passadas.map(d=>
+        `<button class="btn-data${d===historicoDataSel?' btn-data-ativa':''}" onclick="selecionarHistorico('${d}')">${d} (${dias[parseDate(d).getDay()]})</button>`
+      ).join('');
+      if (!historicoDataSel) { lista.innerHTML=''; return; }
+      let lancs = todosLanc.filter(r=>r.DATA===historicoDataSel);
+      if (filtroOp!=='TODAS') lancs = lancs.filter(v=>v.OP===filtroOp);
+      if (!lancs.length) { lista.innerHTML=`<div class="empty-msg">Nenhum lançamento em ${historicoDataSel}.</div>`; return; }
+      const dt = parseDate(historicoDataSel);
+      lista.innerHTML=`
+        <div style="font-size:13px;color:var(--muted);margin-bottom:12px">${historicoDataSel} (${dias[dt.getDay()]}) — ${lancs.length} lançamento${lancs.length!==1?'s':''}</div>
+        <div style="overflow-x:auto"><table>
+          <thead><tr><th>OP</th><th>Veículo</th><th>Motorista</th><th>Destino</th><th>Ponto ON</th><th>Saída CD</th><th>Chegada CD</th><th>KM</th><th>Hora Total</th><th>Status</th></tr></thead>
+          <tbody>${lancs.map(v=>{
+            const st=calcStatus(v); const cor=OP_CORES[v.OP]||'#6b8099';
+            return `<tr>
+              <td><span class="op-pill" style="background:${cor}20;color:${cor}">${v.OP||'—'}</span></td>
+              <td class="col-placa">${v.VEICULO||'—'}</td>
+              <td>${v.MOTORISTA||'—'}</td>
+              <td class="col-dest">${v.DESTINO||'—'}</td>
+              <td class="mono">${v.PONTO_ON||'—'}</td>
+              <td class="mono">${v.SAIDA_VEICULO_CD||'—'}</td>
+              <td class="mono">${v.CHEGADA_VEICULO_CD||'—'}</td>
+              <td class="mono">${v.KM_PERCORRIDO?v.KM_PERCORRIDO+' km':'—'}</td>
+              <td class="mono">${v.HORA_TOTAL||'—'}</td>
+              <td><span class="st-dot" style="background:${st.cor}"></span>${st.label}</td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table></div>`;
+    }
+    window.selecionarHistorico = (d) => { historicoDataSel=d; renderHistorico(); };
+
+    // ── Abas ──────────────────────────────────────────────────
+    window.irAba = (aba) => {
+      abaPainel = aba;
+      ['dashboard','programacao','historico'].forEach(a => {
+        const btn=document.getElementById('aba-'+a);
+        const sec=document.getElementById('sec-'+a);
+        if(btn) btn.classList.toggle('ativa', a===aba);
+        if(sec) sec.style.display = a===aba?'block':'none';
       });
-    }
-
-    function renderProgLista() {
-      const lista = $('prog-lista'); if(!lista) return;
-      let filtrado = [...veiculosProg];
-      if (filtroOp !== 'TODAS') filtrado = filtrado.filter(v=>v.OP===filtroOp);
-      if (!filtrado.length) {
-        lista.innerHTML = `<div style="text-align:center;padding:40px;color:var(--muted)">📅 Nenhum lançamento para ${labelData(dataProg)}.</div>`;
-        return;
-      }
-      lista.innerHTML = `<table><thead><tr>
-        <th>OP</th><th>Veículo</th><th>Motorista</th>
-        <th>Ponto ON</th><th>Saída CD</th><th>Chegada CD</th>
-        <th>KM</th><th>Status</th>
-      </tr></thead><tbody>${filtrado.map(v => {
-        const st  = calcStatus(v);
-        const cor = OP_CORES[v.OP]||'#6b8099';
-        return `<tr class="tr-data" onclick="abrirDetalhe('${v.fid}','prog')">
-          <td><span class="op-pill" style="background:${cor}20;color:${cor}">${v.OP||'—'}</span></td>
-          <td class="col-placa">${v.VEICULO||'—'}</td>
-          <td>${v.MOTORISTA||'—'}</td>
-          <td style="font-size:12px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${v.DESTINO||'—'}</td>
-          <td class="mono">${v.PONTO_ON||'—'}</td>
-          <td class="mono">${v.SAIDA_VEICULO_CD||'—'}</td>
-          <td class="mono">${v.CHEGADA_VEICULO_CD||'—'}</td>
-          <td class="mono">${v.KM_PERCORRIDO?v.KM_PERCORRIDO+' km':'—'}</td>
-          <td><span class="st-dot" style="background:${st.cor}"></span>${st.label}</td>
-        </tr>`;
-      }).join('')}</tbody></table>`;
-    }
-
-    window.abrirDetalhe = (fid, origem) => {
-      const lista = origem==='prog' ? veiculosProg : todosLanc;
-      const v = lista.find(x=>x.fid===fid);
-      if(!v) return;
-
-      const st  = calcStatus(v);
-      const cor = OP_CORES[v.OP]||'#6b8099';
-      const isProg = v.DATA && v.DATA !== hojeISO();
-
-      $('det-titulo').innerHTML = `<span class="op-pill" style="background:${cor}20;color:${cor}">${v.OP||'—'}</span> ${v.VEICULO||'—'}`;
-      $('det-sub').textContent  = `${v.MOTORISTA||'—'} · ${v.DATA||''}${isProg?' 📅':''}`;
-      $('det-st').innerHTML     = `<span class="st-dot" style="background:${st.cor}"></span>${st.label}`;
-
-      const row = (label, val) => val ? `<div class="det-row"><span class="det-l">${label}</span><span class="det-v">${val}</span></div>` : '';
-      const sep = (label) => `<div class="det-sec">${label}</div>`;
-
-      $('det-campos').innerHTML = `
-        ${sep('📋 Dados da Base')}
-        ${row('Destino', v.DESTINO)}
-        ${row('Ponto ON', v.PONTO_ON)}
-        ${row('Prev. Refeição', v.PREVISAO_REFEICAO)}
-        ${row('Saída Veículo CD', v.SAIDA_VEICULO_CD)}
-        ${row('SM', v.SM)}
-        ${row('Data Carregamento', v.DATA_CARRG)}
-        ${row('Almoço', v.ALMOCO)}
-        ${row('KM Saída', v.KM_SAIDA)}
-        ${row('Prev. 1ª Loja', v.LOJA_1)}
-        ${row('Abertura 1ª Loja', v.ABERTURA_1)}
-        ${sep('🚛 Preenchimento em Campo')}
-        ${row('Fechado 1ª Loja', v.FECHADO_1)}
-        ${row('Saída 1ª Loja', v.SAIDA_1)}
-        ${row('Total Loja 1', v.TOTAL_LOJA_1)}
-        ${row('Prev. 2ª Loja', v.LOJA_2)}
-        ${row('Abertura 2ª Loja', v.ABERTURA_2)}
-        ${row('Fechado 2ª Loja', v.FECHADO_2)}
-        ${row('Saída 2ª Loja', v.SAIDA_2)}
-        ${row('Total Loja 2', v.TOTAL_LOJA_2)}
-        ${row('Total Loja', v.TOTAL_LOJA)}
-        ${row('Diesel Chegada', v.DIESEL_CHEGADA)}
-        ${row('Chegada Veículo CD', v.CHEGADA_VEICULO_CD)}
-        ${row('Ponto OFF', v.PONTO_OFF_MOT)}
-        ${row('Hora Total', v.HORA_TOTAL_MOTORISTA)}
-        ${row('Data Chegada', v.DATA_CHEGADA)}
-        ${row('KM Chegada', v.KM_CHEGADA)}
-        ${row('KM Percorrido', v.KM_PERCORRIDO ? v.KM_PERCORRIDO+' km' : '')}
-        ${row('Próx. Disponibilidade', v.PROX_HORA_DISP)}
-        ${row('Observações', v.OBSERVACOES)}
-      `;
-      $('overlay').style.display='flex';
+      atualizarDashboard();
     };
 
-    window.fecharDetalhe = () => { $('overlay').style.display='none'; };
+    // ── Init ──────────────────────────────────────────────────
+    window.addEventListener('DOMContentLoaded', () => {
+      const tick = () => {
+        const d = new Date();
+        const el = document.getElementById('relogio');
+        if(el) el.textContent=`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      };
+      tick(); setInterval(tick,1000);
+      sincronizar(false);
+      setInterval(()=>sincronizar(true), SYNC_INTERVAL);
+    });
 
-    function renderUsuarios() {
-      const pendentes  = todosUsers.filter(u=>u.status==='pendente');
-      const ativos     = todosUsers.filter(u=>u.status==='ativo');
-      const bloqueados = todosUsers.filter(u=>u.status==='bloqueado');
-
-      $('sec-usuarios').innerHTML = `
-        ${ativos.length ? `
-          <div class="usr-grupo-title">✅ Ativos (${ativos.length})</div>
-          ${ativos.map(u => cardUsuario(u)).join('')}
-        ` : ''}
-        ${pendentes.length ? `
-          <div class="usr-grupo-title" style="margin-top:24px">⏳ Aguardando aprovação (${pendentes.length})</div>
-          ${pendentes.map(u => cardUsuario(u)).join('')}
-        ` : ''}
-        ${bloqueados.length ? `
-          <div class="usr-grupo-title" style="margin-top:24px">🚫 Bloqueados (${bloqueados.length})</div>
-          ${bloqueados.map(u => cardUsuario(u)).join('')}
-        ` : ''}
-      `;
-    }
-
-    function cardUsuario(u) {
-      const opCor = OP_CORES[u.op]||'#6b8099';
-      return `<div class="usr-card">
-        <div class="usr-info">
-          <div class="usr-nome">${u.nome||'—'}</div>
-          <div class="usr-email">${u.email||'—'}</div>
-          <div class="usr-tags">
-            <span class="op-pill" style="background:${opCor}20;color:${opCor};font-size:12px">${u.op||'—'}</span>
-            <span class="cargo-tag">${u.cargo||'—'}</span>
-            <span class="status-tag st-${u.status}">${u.status}</span>
-          </div>
-        </div>
-      </div>`;
-    }
-
-    iniciar();
-
-    window.mostrarLegenda = () => { document.getElementById('legenda-overlay').style.display='flex'; };
-    window.fecharLegenda  = () => { document.getElementById('legenda-overlay').style.display='none'; };
+    window.sincronizarManual = () => sincronizar(false);
   </script>
+
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-    :root{
-      --bg:#080f18;--surf:#0e1a28;--card:#11202f;--bord:#1b2e42;
-      --acc:#f0a500;--text:#dde6ef;--muted:#5a7a99;--danger:#e85555;
-    }
+    :root{--bg:#080f18;--surf:#0e1a28;--card:#11202f;--bord:#1b2e42;--acc:#f0a500;--text:#dde6ef;--muted:#5a7a99;--danger:#e85555;}
+    html,body{height:100vh;overflow:hidden;background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;}
+    .mono{font-family:'JetBrains Mono',monospace;font-size:12px}
 
-    /* ── Layout base ── */
-    html,body{
-      height:100vh;
-      overflow:hidden;
-      background:var(--bg);
-      color:var(--text);
-      font-family:'Barlow',sans-serif;
-    }
-
-    .mono{font-family:'JetBrains Mono',monospace;font-size:13px}
-
-    /* ── Cabeçalho fixo ── */
-    /* topbar ≈ 53px + abas ≈ 45px = 98px */
-    .site-header{
-      position:fixed;
-      top:0; left:0; right:0;
-      z-index:100;
-      background:var(--surf);
-    }
-    .topbar{
-      display:flex;align-items:center;justify-content:space-between;
-      padding:14px 24px;
-      border-bottom:1px solid var(--bord);
-    }
+    /* ── Header ── */
+    .site-header{position:fixed;top:0;left:0;right:0;z-index:100;background:var(--surf);}
+    .topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;border-bottom:1px solid var(--bord);}
     .brand{font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:22px;color:var(--acc)}
     .brand span{color:var(--muted);font-weight:400;font-size:13px;margin-left:8px}
+    .topbar-r{display:flex;align-items:center;gap:12px}
     #relogio{font-family:'JetBrains Mono',monospace;font-size:22px;color:var(--acc)}
+    #sync-status{font-size:11px;color:var(--muted)}
+    #sync-status.sync-ok{color:#34d399}
+    #sync-status.sync-err{color:var(--danger)}
+    .btn-sync{background:none;border:1px solid var(--bord);color:var(--muted);padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-family:'Barlow',sans-serif}
+    .btn-sync:hover{border-color:var(--acc);color:var(--acc)}
     .abas{display:flex;padding:0 24px;border-bottom:1px solid var(--bord)}
     .aba-btn{padding:12px 20px;background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);cursor:pointer;font-size:14px;font-weight:500;transition:color .2s}
     .aba-btn.ativa{color:var(--acc);border-bottom-color:var(--acc)}
     .aba-btn:hover{color:var(--text)}
 
-    /* ── Conteúdo com scroll ── */
-    .site-content{
-      position:fixed;
-      top:98px; left:0; right:0; bottom:0;
-      overflow-y:auto;
-      -webkit-overflow-scrolling:touch;
-    }
+    /* ── Conteúdo ── */
+    .site-content{position:fixed;top:98px;left:0;right:0;bottom:0;overflow-y:auto;-webkit-overflow-scrolling:touch;}
 
-    /* ── Dashboard ── */
-    .resumo{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:20px 24px 0}
+    /* ── KPIs ── */
+    .resumo{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:16px 24px 0}
     .cs{background:var(--card);border:1px solid var(--bord);border-radius:12px;padding:18px}
     .cs .num{font-family:'Barlow Condensed',sans-serif;font-size:44px;font-weight:900;line-height:1}
     .cs .lbl{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-top:4px}
     .n-total{color:var(--text)}.n-ok{color:#34d399}.n-rota{color:#fbbf24}.n-pend{color:var(--muted)}
-    .ops-bar{display:flex;gap:10px;padding:14px 24px 0}
-    .op-c{flex:1;background:var(--card);border:1px solid var(--bord);border-radius:10px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between}
-    .op-n{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px}
-    .op-cnt{font-family:'JetBrains Mono',monospace;font-size:22px}
-    .op-ls .op-n,.op-ls .op-cnt{color:#e84040}
-    .op-tl .op-n,.op-tl .op-cnt{color:#1a7a4a}
-    .op-ht .op-n,.op-ht .op-cnt{color:#2ed573}
-    .op-cv .op-n,.op-cv .op-cnt{color:#f5d800}
-    .filtros{display:flex;align-items:center;gap:8px;padding:14px 24px 0;flex-wrap:wrap}
+
+    /* ── Barras por OP ── */
+    .op-bar{display:flex;gap:10px;padding:12px 24px 0}
+    .op-card{flex:1;background:var(--card);border:1px solid var(--bord);border-radius:10px;padding:10px 16px;display:flex;align-items:center;justify-content:space-between}
+    .op-sig{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:20px}
+    .op-cnt{font-family:'JetBrains Mono',monospace;font-size:24px;font-weight:700}
+
+    /* ── Filtros ── */
+    .filtros{display:flex;align-items:center;gap:8px;padding:12px 24px 0;flex-wrap:wrap}
     .filtros-l{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted)}
     .btn-op{padding:5px 14px;border-radius:20px;border:1px solid var(--bord);background:transparent;color:var(--muted);cursor:pointer;font-size:13px;font-weight:600;transition:all .15s}
     .btn-op.ativo{background:var(--acc);border-color:var(--acc);color:#080f18}
-    .tab-wrap{padding:14px 24px 40px;overflow-x:auto}
+
+    /* ── Tabela ── */
+    .tab-wrap{padding:12px 24px 40px;overflow-x:auto}
     .cnt-label{font-size:12px;color:var(--muted);margin-bottom:8px}
     table{width:100%;border-collapse:collapse}
-    thead th{text-align:left;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);padding:10px 12px;border-bottom:1px solid var(--bord);white-space:nowrap}
-    .tr-data td{padding:11px 12px;border-bottom:1px solid #0d1e2e;font-size:14px;vertical-align:middle}
-    .tr-data:hover{background:#ffffff05;cursor:pointer}
+    thead th{text-align:left;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);padding:9px 12px;border-bottom:1px solid var(--bord);white-space:nowrap}
+    tbody td{padding:10px 12px;border-bottom:1px solid #0d1e2e;font-size:13px;vertical-align:middle}
+    tbody tr:hover{background:#ffffff05}
     .op-pill{display:inline-block;padding:2px 10px;border-radius:4px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px}
-    .col-placa{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px}
+    .col-placa{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px}
+    .col-dest{font-size:12px;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .st-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
     .empty-row{text-align:center;padding:60px;color:var(--muted)}
 
-    /* ── Programação ── */
-    #sec-programacao{display:none;padding:20px 24px 40px}
-    #sec-historico{display:none;padding:20px 24px 40px}
-    .hist-date-picker{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+    /* ── Prog / Hist ── */
+    #sec-programacao,#sec-historico{display:none;padding:16px 24px 40px}
     .date-picker-wrap{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
-    .btn-data{padding:8px 16px;background:var(--card);border:1px solid var(--bord);border-radius:8px;color:var(--muted);font-size:13px;font-family:'Barlow Condensed',sans-serif;font-weight:600;cursor:pointer;transition:all .2s}
+    .btn-data{padding:7px 14px;background:var(--card);border:1px solid var(--bord);border-radius:8px;color:var(--muted);font-size:12px;font-family:'Barlow Condensed',sans-serif;font-weight:600;cursor:pointer;transition:all .2s}
     .btn-data:hover{border-color:var(--acc);color:var(--acc)}
     .btn-data-ativa{background:#4da6ff20!important;border-color:#4da6ff!important;color:#4da6ff!important}
-
-    /* ── Usuários ── */
-    #sec-usuarios{display:none;padding:20px 24px 40px}
-    .usr-grupo-title{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding-bottom:10px;border-bottom:1px solid var(--bord);margin-bottom:12px}
-    .usr-card{background:var(--card);border:1px solid var(--bord);border-radius:12px;padding:16px;margin-bottom:10px}
-    .usr-nome{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px}
-    .usr-email{font-size:13px;color:var(--muted);margin:2px 0 8px}
-    .usr-tags{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-    .cargo-tag{font-size:11px;background:#ffffff10;border:1px solid var(--bord);border-radius:4px;padding:2px 8px;color:var(--muted)}
-    .status-tag{font-size:11px;border-radius:4px;padding:2px 8px;font-weight:600}
-    .st-ativo{background:#34d39920;color:#34d399}
-    .st-pendente{background:#fbbf2420;color:#fbbf24}
-    .st-bloqueado{background:#e8555520;color:var(--danger)}
-
-    /* ── Overlay detalhe ── */
-    #overlay{display:none;position:fixed;inset:0;background:#000a;z-index:200;align-items:flex-end;justify-content:center}
-    .det-panel{background:var(--surf);border:1px solid var(--bord);border-radius:20px 20px 0 0;width:100%;max-width:600px;max-height:85vh;overflow-y:auto;padding:28px}
-    .det-hd{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px}
-    .det-titulo{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:26px;display:flex;align-items:center;gap:10px}
-    .det-sub{font-size:13px;color:var(--muted);margin-top:2px}
-    .det-st{display:flex;align-items:center;font-size:13px;margin-top:6px}
-    .btn-fechar{background:none;border:1px solid var(--bord);color:var(--muted);padding:8px 16px;border-radius:8px;cursor:pointer}
-    .det-sec{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding:14px 0 6px;border-bottom:1px solid var(--bord);margin-bottom:8px}
-    .det-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #0d1e2e}
-    .det-l{font-size:12px;color:var(--muted)}.det-v{font-size:13px;font-weight:500;text-align:right;max-width:65%}
+    .sec-title{font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);padding-bottom:10px;border-bottom:1px solid var(--bord);margin-bottom:14px}
+    .empty-msg{text-align:center;padding:40px;color:var(--muted);font-size:14px}
 
     @media(max-width:768px){
       .resumo{grid-template-columns:repeat(2,1fr)}
-      .ops-bar{flex-wrap:wrap}
+      .op-bar{flex-wrap:wrap}
       .brand span{display:none}
       #relogio{font-size:18px}
       .tab-wrap{padding:12px}
@@ -545,42 +375,41 @@
 <!-- CABEÇALHO FIXO -->
 <div class="site-header">
   <div class="topbar">
-    <div class="brand">FROTA <span>Painel de Acompanhamento</span></div>
-    <button onclick="mostrarLegenda()" style="background:none;border:1px solid var(--bord);color:var(--muted);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px">?</button>
-    <span id="relogio">00:00</span>
+    <div>
+      <span class="brand">FROTA <span>Painel de Acompanhamento</span></span>
+    </div>
+    <div class="topbar-r">
+      <span id="sync-status">Carregando...</span>
+      <button id="btn-sync" class="btn-sync" onclick="sincronizarManual()">🔄 Atualizar</button>
+      <span id="relogio">00:00</span>
+    </div>
   </div>
   <div class="abas">
     <button id="aba-dashboard"   class="aba-btn ativa" onclick="irAba('dashboard')">📊 Dashboard</button>
     <button id="aba-programacao" class="aba-btn"       onclick="irAba('programacao')">📅 Programação</button>
-    <button id="aba-usuarios"    class="aba-btn"       onclick="irAba('usuarios')">👥 Usuários</button>
     <button id="aba-historico"   class="aba-btn"       onclick="irAba('historico')">📂 Histórico</button>
   </div>
 </div>
 
-<!-- CONTEÚDO COM SCROLL -->
+<!-- CONTEÚDO -->
 <div class="site-content">
 
   <!-- DASHBOARD -->
   <div id="sec-dashboard">
     <div class="resumo">
-      <div class="cs"><div class="num n-total"  id="c-total">0</div><div class="lbl">Total hoje</div></div>
-      <div class="cs"><div class="num n-ok"     id="c-concluido">0</div><div class="lbl">Concluídos</div></div>
-      <div class="cs"><div class="num n-rota"   id="c-rota">0</div><div class="lbl">Em operação</div></div>
-      <div class="cs"><div class="num n-pend"   id="c-pendente">0</div><div class="lbl">Pendentes</div></div>
+      <div class="cs"><div class="num n-total" id="kpi-total">—</div><div class="lbl">Total hoje</div></div>
+      <div class="cs"><div class="num n-ok"    id="kpi-conc">0</div><div class="lbl">Concluídos</div></div>
+      <div class="cs"><div class="num n-rota"  id="kpi-op">0</div><div class="lbl">Em operação</div></div>
+      <div class="cs"><div class="num n-pend"  id="kpi-pend">0</div><div class="lbl">Pendentes</div></div>
     </div>
-    <div class="ops-bar">
-      <div class="op-c op-ls"><span class="op-n">LS</span><span class="op-cnt" id="op-LS">0</span></div>
-      <div class="op-c op-tl"><span class="op-n">TL</span><span class="op-cnt" id="op-TL">0</span></div>
-      <div class="op-c op-ht"><span class="op-n">HT</span><span class="op-cnt" id="op-HT">0</span></div>
-      <div class="op-c op-cv"><span class="op-n">CV</span><span class="op-cnt" id="op-CV">0</span></div>
-    </div>
+    <div class="op-bar" id="op-bar"></div>
     <div class="filtros">
       <span class="filtros-l">Operação:</span>
       <button class="btn-op ativo" data-op="TODAS" onclick="setFiltroOp('TODAS')">Todas</button>
-      <button class="btn-op" data-op="LS" onclick="setFiltroOp('LS')" style="color:#4da6ff;border-color:#4da6ff">LS</button>
-      <button class="btn-op" data-op="TL" onclick="setFiltroOp('TL')" style="color:#ff8c42;border-color:#ff8c42">TL</button>
-      <button class="btn-op" data-op="HT" onclick="setFiltroOp('HT')" style="color:#a78bfa;border-color:#a78bfa">HT</button>
-      <button class="btn-op" data-op="CV" onclick="setFiltroOp('CV')" style="color:#34d399;border-color:#34d399">CV</button>
+      <button class="btn-op" data-op="LS" onclick="setFiltroOp('LS')" style="color:#e84040;border-color:#e84040">LS</button>
+      <button class="btn-op" data-op="TL" onclick="setFiltroOp('TL')" style="color:#2ed573;border-color:#2ed573">TL</button>
+      <button class="btn-op" data-op="HT" onclick="setFiltroOp('HT')" style="color:#27ae60;border-color:#27ae60">HT</button>
+      <button class="btn-op" data-op="CV" onclick="setFiltroOp('CV')" style="color:#f5d800;border-color:#f5d800">CV</button>
     </div>
     <div class="tab-wrap">
       <div class="cnt-label" id="cnt-label">—</div>
@@ -588,62 +417,27 @@
         <thead>
           <tr><th>OP</th><th>Veículo</th><th>Motorista</th><th>Destino</th><th>Ponto ON</th><th>Saída CD</th><th>Chegada CD</th><th>KM</th><th>Status</th></tr>
         </thead>
-        <tbody id="tbody"><tr><td colspan="8" class="empty-row">Carregando...</td></tr></tbody>
+        <tbody id="tbody">
+          <tr><td colspan="9" class="empty-row">⏳ Carregando...</td></tr>
+        </tbody>
       </table>
     </div>
   </div>
 
   <!-- PROGRAMAÇÃO -->
   <div id="sec-programacao">
-    <div class="date-picker-wrap" id="date-picker"></div>
-    <div id="prog-lista"><div style="text-align:center;padding:40px;color:var(--muted)">Selecione uma data acima</div></div>
+    <div class="sec-title">📅 Programação — selecione a data</div>
+    <div class="date-picker-wrap" id="prog-picker"></div>
+    <div id="prog-lista"><div class="empty-msg">Selecione uma data acima</div></div>
   </div>
-
-  <!-- USUÁRIOS -->
-  <div id="sec-usuarios"></div>
 
   <!-- HISTÓRICO -->
   <div id="sec-historico">
-    <div class="usr-grupo-title" style="margin-bottom:16px">📂 Histórico de Lançamentos</div>
-    <p style="font-size:13px;color:var(--muted);margin-bottom:16px">Selecione uma data para ver os lançamentos. Somente leitura.</p>
-    <div class="hist-date-picker" id="hist-date-picker">
-      <div style="color:var(--muted);font-size:13px">Clique na aba para carregar as datas...</div>
-    </div>
+    <div class="sec-title">📂 Histórico de Lançamentos — somente leitura</div>
+    <div class="date-picker-wrap" id="hist-picker"></div>
     <div id="hist-lista"></div>
   </div>
 
-</div>
-
-<!-- OVERLAY DETALHE -->
-<div id="overlay" onclick="if(event.target===this)fecharDetalhe()">
-  <div class="det-panel">
-    <div class="det-hd">
-      <div>
-        <div class="det-titulo" id="det-titulo">—</div>
-        <div class="det-sub"    id="det-sub">—</div>
-        <div class="det-st"     id="det-st">—</div>
-      </div>
-      <button class="btn-fechar" onclick="fecharDetalhe()">✕ Fechar</button>
-    </div>
-    <div id="det-campos"></div>
-  </div>
-</div>
-
-<!-- LEGENDA -->
-<div id="legenda-overlay" onclick="if(event.target===this)fecharLegenda()" style="display:none;position:fixed;inset:0;background:#000a;z-index:500;align-items:center;justify-content:center">
-  <div style="background:#0e1a28;border:1px solid #1b2e42;border-radius:16px;padding:28px;width:90%;max-width:400px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-      <span style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:20px;color:#dde6ef">📋 Legenda de Status</span>
-      <button onclick="fecharLegenda()" style="background:none;border:1px solid #1b2e42;color:#5a7a99;padding:6px 12px;border-radius:6px;cursor:pointer">✕</button>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:12px">
-      <div style="display:flex;align-items:center;gap:12px"><span style="width:12px;height:12px;border-radius:50%;background:#6b8099;flex-shrink:0"></span><div><strong style="color:#dde6ef">Pendente</strong><div style="font-size:12px;color:#5a7a99">Lançamento programado — horário de saída ainda não chegou</div></div></div>
-      <div style="display:flex;align-items:center;gap:12px"><span style="width:12px;height:12px;border-radius:50%;background:#4da6ff;flex-shrink:0"></span><div><strong style="color:#dde6ef">Iniciado</strong><div style="font-size:12px;color:#5a7a99">Motorista bateu o ponto — ainda no CD aguardando saída</div></div></div>
-      <div style="display:flex;align-items:center;gap:12px"><span style="width:12px;height:12px;border-radius:50%;background:#f97316;flex-shrink:0"></span><div><strong style="color:#dde6ef">Em trânsito</strong><div style="font-size:12px;color:#5a7a99">Veículo saiu do CD e está a caminho da loja</div></div></div>
-      <div style="display:flex;align-items:center;gap:12px"><span style="width:12px;height:12px;border-radius:50%;background:#fbbf24;flex-shrink:0"></span><div><strong style="color:#dde6ef">Em rota</strong><div style="font-size:12px;color:#5a7a99">Veículo está na loja realizando a entrega</div></div></div>
-      <div style="display:flex;align-items:center;gap:12px"><span style="width:12px;height:12px;border-radius:50%;background:#34d399;flex-shrink:0"></span><div><strong style="color:#dde6ef">Concluído</strong><div style="font-size:12px;color:#5a7a99">Veículo retornou ao CD e KM registrado</div></div></div>
-    </div>
-  </div>
 </div>
 </body>
 </html>
