@@ -62,11 +62,12 @@
       if (v.CHEGADA_VEICULO_CD && v.KM_CHEGADA) return {key:'concluido', label:'Concluído',   cor:'#34d399'};
       if (v.SAIDA_1 || v.ABERTURA_1)            return {key:'rota',      label:'Em rota',     cor:'#fbbf24'};
 
+      // Iniciado e Em trânsito só se SAIDA_VEICULO_CD estiver preenchida
       const saidaMin = tMin(v.SAIDA_VEICULO_CD);
-      if (isHoje && saidaMin !== null && hMin >= saidaMin) return {key:'transito', label:'Em trânsito', cor:'#f97316'};
-
-      const pontoOnMin = tMin(v.PONTO_ON);
-      if (isHoje && pontoOnMin !== null && hMin >= pontoOnMin) return {key:'iniciado', label:'Iniciado', cor:'#4da6ff'};
+      if (saidaMin !== null) {
+        if (isHoje && hMin >= saidaMin) return {key:'transito', label:'Em trânsito', cor:'#f97316'};
+        return {key:'iniciado', label:'Iniciado', cor:'#4da6ff'};
+      }
 
       return {key:'pendente', label:'Pendente', cor:'#6b8099'};
     }
