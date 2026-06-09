@@ -171,11 +171,16 @@
     }
 
     function escutarPermissoes() {
-      onSnapshot(doc(db,'configuracoes','permissoes'), snap => {
-        if (snap.exists()) { const d=snap.data(); permissoes={LS:!!d.LS,TL:!!d.TL,HT:!!d.HT,CV:!!d.CV}; }
-        else { permissoes={LS:false,TL:false,HT:false,CV:false}; }
-        renderPermissoes();
-      });
+      async function buscarPermissoes() {
+        try {
+          const snap = await getDoc(doc(db,'configuracoes','permissoes'));
+          if (snap.exists()) { const d=snap.data(); permissoes={LS:!!d.LS,TL:!!d.TL,HT:!!d.HT,CV:!!d.CV}; }
+          else { permissoes={LS:false,TL:false,HT:false,CV:false}; }
+          renderPermissoes();
+        } catch(e) { console.warn('Erro permissoes:', e); }
+      }
+      buscarPermissoes();
+      setInterval(buscarPermissoes, 30 * 1000); // a cada 30 segundos (permissão muda com frequência)
     }
 
     function renderPermissoes() {
@@ -205,16 +210,26 @@
     };
 
     function escutarLancamentos() {
-      onSnapshot(query(collection(db,'lancamentos'), where('DATA','==',hojeISO())), snap => {
-        todosLanc = []; snap.forEach(d => todosLanc.push({fid:d.id,...d.data()}));
-        renderCards(); renderTabela();
-      });
+      async function buscarLancamentos() {
+        try {
+          const snap = await getDocs(query(collection(db,'lancamentos'), where('DATA','==',hojeISO())));
+          todosLanc = []; snap.forEach(d => todosLanc.push({fid:d.id,...d.data()}));
+          renderCards(); renderTabela();
+        } catch(e) { console.warn('Erro lancamentos:', e); }
+      }
+      buscarLancamentos();
+      setInterval(buscarLancamentos, 2 * 60 * 1000); // a cada 2 minutos
     }
     function escutarUsuarios() {
-      onSnapshot(collection(db,'usuarios'), snap => {
-        todosUsers = []; snap.forEach(d => todosUsers.push({uid:d.id,...d.data()}));
-        renderUsuarios(); atualizarBadgePendentes();
-      });
+      async function buscarUsuarios() {
+        try {
+          const snap = await getDocs(collection(db,'usuarios'));
+          todosUsers = []; snap.forEach(d => todosUsers.push({uid:d.id,...d.data()}));
+          renderUsuarios(); atualizarBadgePendentes();
+        } catch(e) { console.warn('Erro usuarios:', e); }
+      }
+      buscarUsuarios();
+      setInterval(buscarUsuarios, 3 * 60 * 1000); // a cada 3 minutos
     }
 
     window.irAba = (aba) => {
@@ -403,11 +418,15 @@
 
     function carregarProgSup() {
       if (!dataProg) return;
-      if (unsubProg) { unsubProg(); unsubProg=null; }
-      const q=query(collection(db,'lancamentos'), where('DATA','==',dataProg));
-      unsubProg=onSnapshot(q, snap=>{
-        veiculosProg=[]; snap.forEach(d=>veiculosProg.push({fid:d.id,...d.data()})); renderProgListaSup();
-      });
+      if (unsubProg) { clearInterval(unsubProg); unsubProg=null; }
+      async function buscarProg() {
+        try {
+          const snap = await getDocs(query(collection(db,'lancamentos'), where('DATA','==',dataProg)));
+          veiculosProg=[]; snap.forEach(d=>veiculosProg.push({fid:d.id,...d.data()})); renderProgListaSup();
+        } catch(e) { console.warn('Erro prog sup:', e); }
+      }
+      buscarProg();
+      unsubProg = setInterval(buscarProg, 2 * 60 * 1000); // a cada 2 minutos
     }
 
     function renderProgListaSup() {
