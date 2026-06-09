@@ -205,8 +205,10 @@
     }
 
     window.togglePermissao = async (op) => {
-      const novoValor = !permissoes[op]; permissoes[op] = novoValor;
+      const novoValor = !permissoes[op];
+      permissoes[op] = novoValor;
       await setDoc(doc(db,'configuracoes','permissoes'), permissoes, {merge:true});
+      renderPermissoes(); // atualiza a tela imediatamente
     };
 
     function escutarLancamentos() {
