@@ -296,9 +296,10 @@
       if(v.CHEGADA_VEICULO_CD&&v.KM_CHEGADA)return{cor:'verde',txt:'Concluído'};
       if(v.SAIDA_1||v.ABERTURA_1)return{cor:'amarelo',txt:'Em rota'};
       const saidaMin=tMin(v.SAIDA_VEICULO_CD);
-      if(isHoje&&saidaMin!==null&&hMin>=saidaMin)return{cor:'laranja',txt:'Em trânsito'};
-      const pontoOnMin=tMin(v.PONTO_ON);
-      if(isHoje&&pontoOnMin!==null&&hMin>=pontoOnMin)return{cor:'azul',txt:'Iniciado'};
+      if(saidaMin!==null){
+        if(isHoje&&hMin>=saidaMin)return{cor:'laranja',txt:'Em trânsito'};
+        return{cor:'azul',txt:'Iniciado'};
+      }
       return{cor:'cinza',txt:'Pendente'};
     }
 
