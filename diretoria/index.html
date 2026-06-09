@@ -238,7 +238,8 @@
     };
 
     function renderTabela() {
-      let lista = [...todosLanc];
+      // Tabela mostra só veículos com motorista E destino preenchidos
+      let lista = [...todosLanc].filter(escalado);
       if (filtroOp !== 'TODAS') lista = lista.filter(v=>v.OP===filtroOp);
       lista.sort((a,b) => {
         const ord={pendente:0,iniciado:1,transito:2,rota:3,concluido:4};
