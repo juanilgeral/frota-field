@@ -92,16 +92,20 @@
     const calcTotalLoja  = (t1,t2) => { const a=toMin(t1),b=toMin(t2); return (a||b)?toHM(a+b):''; };
 
     function escutarPermissoes() {
-      onSnapshot(doc(db,'configuracoes','permissoes'), snap => {
-        if (snap.exists() && currentPerfil) {
-          const d = snap.data();
-          permissaoNovoLanc = !!d[currentPerfil.op];
-        } else {
-          permissaoNovoLanc = false;
-        }
-        renderLista();
-        renderProgLista();
-      });
+      async function buscarPermissoes() {
+        try {
+          const snap = await getDoc(doc(db,'configuracoes','permissoes'));
+          if (snap.exists() && currentPerfil) {
+            permissaoNovoLanc = !!snap.data()[currentPerfil.op];
+          } else {
+            permissaoNovoLanc = false;
+          }
+          renderLista();
+          renderProgLista();
+        } catch(e) { console.warn('Erro permissoes:', e); }
+      }
+      buscarPermissoes();
+      setInterval(buscarPermissoes, 60 * 1000); // a cada 1 minuto
     }
 
     async function buscarSituacaoMotorista(motorista, dataLancamento) {
@@ -256,11 +260,18 @@
 
     function carregarProg() {
       if(!dataProg) return;
-      if(unsubProg){unsubProg();unsubProg=null;}
-      const q=query(collection(db,'lancamentos'),where('DATA','==',dataProg),where('OP','==',currentPerfil.op));
-      unsubProg=onSnapshot(q,snap=>{
-        veiculosProg=[];snap.forEach(d=>veiculosProg.push({fid:d.id,...d.data()}));renderProgLista();
-      });
+      if(unsubProg){ clearInterval(unsubProg); unsubProg=null; }
+      async function buscarProg() {
+        try {
+          const q = query(collection(db,'lancamentos'), where('DATA','==',dataProg), where('OP','==',currentPerfil.op));
+          const snap = await getDocs(q);
+          veiculosProg = [];
+          snap.forEach(d => veiculosProg.push({fid:d.id,...d.data()}));
+          renderProgLista();
+        } catch(e) { console.warn('Erro prog:', e); }
+      }
+      buscarProg();
+      unsubProg = setInterval(buscarProg, 2 * 60 * 1000); // a cada 2 minutos
     }
 
     function renderProgLista() {
@@ -282,10 +293,17 @@
     }
 
     function carregarVeiculos() {
-      const q=query(collection(db,'lancamentos'),where('DATA','==',hojeISO()),where('OP','==',currentPerfil.op));
-      onSnapshot(q,snap=>{
-        veiculosHoje=[];snap.forEach(d=>veiculosHoje.push({fid:d.id,...d.data()}));renderLista();
-      });
+      async function buscarVeiculos() {
+        try {
+          const q = query(collection(db,'lancamentos'), where('DATA','==',hojeISO()), where('OP','==',currentPerfil.op));
+          const snap = await getDocs(q);
+          veiculosHoje = [];
+          snap.forEach(d => veiculosHoje.push({fid:d.id,...d.data()}));
+          renderLista();
+        } catch(e) { console.warn('Erro veiculos:', e); }
+      }
+      buscarVeiculos();
+      setInterval(buscarVeiculos, 2 * 60 * 1000); // a cada 2 minutos
     }
 
     function calcStatus(v) {
