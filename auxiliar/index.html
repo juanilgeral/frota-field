@@ -460,7 +460,16 @@
 
     function fg(id,label,type,val){
       const v=val||'';
-      if(type==='date')return`<div class="fg"><label>${label}</label><input id="f-${id}" type="date" value="${v}"></div>`;
+      if(type==='date'){
+        // Converte dd/mm/aa ou dd/mm/aaaa para yyyy-mm-dd (formato aceito pelo input date)
+        let vDate = v;
+        const m = v.match(/^(\d{2})\/(\d{2})\/(\d{2,4})$/);
+        if(m) {
+          const ano = m[3].length===2 ? '20'+m[3] : m[3];
+          vDate = `${ano}-${m[2]}-${m[1]}`;
+        }
+        return`<div class="fg"><label>${label}</label><input id="f-${id}" type="date" value="${vDate}"></div>`;
+      }
       if(type==='time')return`<div class="fg"><label>${label}</label><input id="f-${id}" type="time" value="${v}"></div>`;
       return`<div class="fg"><label>${label}</label><input id="f-${id}" type="${type}" value="${v}" placeholder="${label}"></div>`;
     }
