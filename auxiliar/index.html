@@ -476,11 +476,12 @@
 
     function formatarDataParaPlanilha(val) {
       if (!val) return '';
-      // yyyy-mm-dd → dd/mm/aa
       const m = val.match(/^(\d{4})-(\d{2})-(\d{2})$/);
       if (m) return `${m[3]}/${m[2]}/${m[1].slice(-2)}`;
-      return val; // já está no formato correto
+      return val;
     }
+
+    function recalc(){
       const g=id=>{const e=$('f-'+id);return e?e.value:'';};
       const s=(id,v)=>{const e=$(id);if(e&&v)e.textContent=v;};
       s('c-PREV',calcPrevisao(g('PONTO_ON')));
