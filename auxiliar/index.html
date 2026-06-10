@@ -91,6 +91,25 @@
     const calcTL         = (ab,sa) => ab&&sa ? toHM(Math.max(0,toMin(sa)-toMin(ab))) : '';
     const calcTotalLoja  = (t1,t2) => { const a=toMin(t1),b=toMin(t2); return (a||b)?toHM(a+b):''; };
 
+    // Converte dd/mm/aa para yyyy-mm-dd (para exibir no input date)
+    function paraInputDate(val) {
+      if (!val) return '';
+      const m = val.match(/^(\d{2})\/(\d{2})\/(\d{2,4})$/);
+      if (m) {
+        const ano = m[3].length===2 ? '20'+m[3] : m[3];
+        return `${ano}-${m[2]}-${m[1]}`;
+      }
+      return val;
+    }
+
+    // Converte yyyy-mm-dd de volta para dd/mm/aa (para salvar na planilha)
+    function deDateInput(val) {
+      if (!val) return '';
+      const m = val.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (m) return `${m[3]}/${m[2]}/${m[1].slice(-2)}`;
+      return val;
+    }
+
     function escutarPermissoes() {
       async function buscarPermissoes() {
         try {
@@ -105,7 +124,7 @@
         } catch(e) { console.warn('Erro permissoes:', e); }
       }
       buscarPermissoes();
-      setInterval(buscarPermissoes, 60 * 1000); // a cada 1 minuto
+      setInterval(buscarPermissoes, 60 * 1000);
     }
 
     async function buscarSituacaoMotorista(motorista, dataLancamento) {
@@ -271,7 +290,7 @@
         } catch(e) { console.warn('Erro prog:', e); }
       }
       buscarProg();
-      unsubProg = setInterval(buscarProg, 2 * 60 * 1000); // a cada 2 minutos
+      unsubProg = setInterval(buscarProg, 2 * 60 * 1000);
     }
 
     function renderProgLista() {
@@ -303,7 +322,7 @@
         } catch(e) { console.warn('Erro veiculos:', e); }
       }
       buscarVeiculos();
-      setInterval(buscarVeiculos, 2 * 60 * 1000); // a cada 2 minutos
+      setInterval(buscarVeiculos, 2 * 60 * 1000);
     }
 
     function calcStatus(v) {
@@ -367,6 +386,7 @@
 
     function renderForm() {
       const d=dadosForm; const fEl=$('form-tela'); const isProg=d.DATA!==hojeISO();
+      const isTL = currentPerfil.op === 'TL';
       fEl.innerHTML=`
         <div class="form-header">
           <button class="btn-voltar" onclick="voltarListaReal()">← Voltar</button>
@@ -433,13 +453,12 @@
           <div class="sec-title">🚛 Preenchimento em Campo</div>
           ${fg('FECHADO_1','Fechado 1ª Loja','time',d.FECHADO_1)}
           ${fg('SAIDA_1','Saída 1ª Loja','time',d.SAIDA_1)}
-          ${currentPerfil.op === 'TL'
+          ${isTL
             ? `<div style="background:#ffffff08;border:1px solid var(--bord);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--muted);margin-bottom:6px;text-align:center">🔒 2ª Loja não utilizada na operação TL</div>`
             : `${fg('LOJA_2','2ª Loja','time',d.LOJA_2)}
           ${fg('ABERTURA_2','Abertura 2ª Loja','time',d.ABERTURA_2)}
           ${fg('FECHADO_2','Fechado 2ª Loja','time',d.FECHADO_2)}
-          ${fg('SAIDA_2','Saída 2ª Loja','time',d.SAIDA_2)}`
-          }
+          ${fg('SAIDA_2','Saída 2ª Loja','time',d.SAIDA_2)}`}
           ${fg('DIESEL_CHEGADA','Diesel Chegada (horário)','time',d.DIESEL_CHEGADA)}
           ${fg('CHEGADA_VEICULO_CD','Chegada Veículo CD','time',d.CHEGADA_VEICULO_CD)}
           ${fg('PONTO_OFF_MOTO','Ponto OFF Motorista (registrado no CD)','time',d.PONTO_OFF_MOT||d.PONTO_OFF_MOTO)}
@@ -461,24 +480,14 @@
     function fg(id,label,type,val){
       const v=val||'';
       if(type==='date'){
-        // Converte dd/mm/aa ou dd/mm/aaaa para yyyy-mm-dd (formato aceito pelo input date)
-        let vDate = v;
-        const m = v.match(/^(\d{2})\/(\d{2})\/(\d{2,4})$/);
-        if(m) {
-          const ano = m[3].length===2 ? '20'+m[3] : m[3];
-          vDate = `${ano}-${m[2]}-${m[1]}`;
-        }
+        // Converte dd/mm/aa → yyyy-mm-dd para o input date
+        let vDate=v;
+        const m=v.match(/^(\d{2})\/(\d{2})\/(\d{2,4})$/);
+        if(m){const ano=m[3].length===2?'20'+m[3]:m[3];vDate=`${ano}-${m[2]}-${m[1]}`;}
         return`<div class="fg"><label>${label}</label><input id="f-${id}" type="date" value="${vDate}"></div>`;
       }
       if(type==='time')return`<div class="fg"><label>${label}</label><input id="f-${id}" type="time" value="${v}"></div>`;
       return`<div class="fg"><label>${label}</label><input id="f-${id}" type="${type}" value="${v}" placeholder="${label}"></div>`;
-    }
-
-    function formatarDataParaPlanilha(val) {
-      if (!val) return '';
-      const m = val.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      if (m) return `${m[3]}/${m[2]}/${m[1].slice(-2)}`;
-      return val;
     }
 
     function recalc(){
@@ -499,6 +508,14 @@
 
     const WEBHOOK_URL='https://script.google.com/macros/s/AKfycbxZxi8vPx1gAoys7W1Poy88BwNf7Zq9tIhmFO6h511kHQhplGPcdkmGdwQ7afqzzcTsCA/exec';
 
+    // Converte yyyy-mm-dd de volta para dd/mm/aa antes de salvar
+    function deDateInput(val){
+      if(!val) return '';
+      const m=val.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if(m) return `${m[3]}/${m[2]}/${m[1].slice(-2)}`;
+      return val;
+    }
+
     window.salvar=async()=>{
       const g=id=>{const e=$('f-'+id);return e?e.value.trim():'';};
       const c=id=>{const e=$(id);return e?e.textContent:'';};
@@ -517,7 +534,7 @@
         MOTORISTA:g('MOTORISTA'),DESTINO:g('DESTINO'),
         PONTO_ON:g('PONTO_ON'),PREVISAO_REFEICAO:c('c-PREV'),
         SAIDA_VEICULO_CD:g('SAIDA_VEICULO_CD'),SM:g('SM'),
-        DATA_CARRG:formatarDataParaPlanilha(g('DATA_CARRG')),ALMOCO:g('ALMOCO'),
+        DATA_CARRG:deDateInput(g('DATA_CARRG')),ALMOCO:g('ALMOCO'),
         KM_SAIDA:g('KM_SAIDA'),LOJA_1:g('LOJA_1'),
         ABERTURA_1:g('ABERTURA_1'),FECHADO_1:g('FECHADO_1'),SAIDA_1:g('SAIDA_1'),
         TOTAL_LOJA_1:tl1,LOJA_2:g('LOJA_2'),
@@ -525,7 +542,7 @@
         TOTAL_LOJA_2:tl2,TOTAL_LOJA:calcTotalLoja(tl1,tl2),
         DIESEL_CHEGADA:g('DIESEL_CHEGADA'),CHEGADA_VEICULO_CD:g('CHEGADA_VEICULO_CD'),
         PONTO_OFF_MOT:g('PONTO_OFF_MOTO'),PONTO_OFF_MOTO:g('PONTO_OFF_MOTO'),
-        HORA_TOTAL_MOTORISTA:c('c-HTOT'),DATA_CHEGADA:formatarDataParaPlanilha(g('DATA_CHEGADA')),KM_CHEGADA:g('KM_CHEGADA'),
+        HORA_TOTAL_MOTORISTA:c('c-HTOT'),DATA_CHEGADA:deDateInput(g('DATA_CHEGADA')),KM_CHEGADA:g('KM_CHEGADA'),
         KM_PERCORRIDO:calcKmPerc(g('KM_SAIDA'),g('KM_CHEGADA')),OBSERVACOES:g('OBSERVACOES'),
         _por:currentUser.email,_em:serverTimestamp()
       };
@@ -549,19 +566,7 @@
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     :root{--bg:#0f1923;--surf:#162130;--bord:#1e3048;--acc:#f0a500;--acc2:#00c9a7;--text:#e8edf2;--muted:#6b8099;--danger:#e85555;}
-
-    /* ── Layout base: tela cheia sem scroll no body ── */
-    html,body{
-      height:100vh;
-      overflow:hidden;
-      background:var(--bg);
-      color:var(--text);
-      font-family:'Barlow',sans-serif;
-      font-size:15px;
-      overscroll-behavior:none;
-    }
-
-    /* ── Telas de auth/status: scroll próprio ── */
+    html,body{height:100vh;overflow:hidden;background:var(--bg);color:var(--text);font-family:'Barlow',sans-serif;font-size:15px;overscroll-behavior:none;}
     .tela-central{display:none;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px;text-align:center}
     .tela-central .icone{font-size:56px;margin-bottom:20px}
     .tela-central h2{font-family:'Barlow Condensed',sans-serif;font-size:26px;margin-bottom:10px}
@@ -582,22 +587,9 @@
     .link-btn{width:100%;margin-top:14px;padding:10px;background:none;border:1px solid var(--bord);color:var(--muted);border-radius:8px;cursor:pointer;font-size:14px}
     .link-btn:hover{border-color:var(--acc);color:var(--acc)}
     .erro{display:none;background:#e8555520;border:1px solid var(--danger);border-radius:8px;padding:10px 14px;color:var(--danger);font-size:13px;margin-top:12px;text-align:center}
-
-    /* ── App principal ── */
     #app-tela{display:none;height:100vh;overflow:hidden;}
-
-    /* ── Cabeçalho fixo ── */
-    .app-header{
-      position:fixed;
-      top:0; left:0; right:0;
-      z-index:100;
-      background:var(--surf);
-    }
-    .topbar{
-      display:flex;align-items:center;justify-content:space-between;
-      padding:14px 20px;
-      border-bottom:1px solid var(--bord);
-    }
+    .app-header{position:fixed;top:0;left:0;right:0;z-index:100;background:var(--surf);}
+    .topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--bord);}
     .topbar-left{display:flex;flex-direction:column;gap:2px}
     .topbar-user{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:18px}
     .topbar-meta{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:8px}
@@ -607,17 +599,7 @@
     .abas-nav{display:flex;border-bottom:1px solid var(--bord);}
     .tab-btn{flex:1;padding:11px;background:none;border:none;border-bottom:3px solid transparent;color:var(--muted);font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;letter-spacing:1px;cursor:pointer;transition:all .2s}
     .tab-btn:hover{color:var(--text)}.tab-ativa{color:var(--acc)!important;border-bottom-color:var(--acc)!important}
-
-    /* ── Área de conteúdo com scroll ── */
-    /* topbar ≈ 57px + abas ≈ 43px = 100px */
-    .app-content{
-      position:fixed;
-      top:100px; left:0; right:0; bottom:0;
-      overflow-y:auto;
-      -webkit-overflow-scrolling:touch;
-    }
-
-    /* ── Seções de lista ── */
+    .app-content{position:fixed;top:100px;left:0;right:0;bottom:0;overflow-y:auto;-webkit-overflow-scrolling:touch;}
     #lista-section{padding:20px}
     #prog-section{padding:20px}
     .date-picker-wrap{padding:0 0 14px;display:flex;gap:8px;flex-wrap:wrap}
@@ -639,20 +621,8 @@
     .card-mot{font-size:13px;color:var(--muted);margin-bottom:8px}
     .card-info{display:flex;gap:12px;font-size:12px;color:var(--muted);flex-wrap:wrap}
     .empty{text-align:center;padding:40px 20px}.empty-icon{font-size:48px;margin:20px 0 10px}.empty p{color:var(--muted)}
-
-    /* ── Formulário: cabeçalho sticky, corpo rola com o app-content ── */
-    #form-tela{
-      display:none;
-    }
-    .form-header{
-      position:sticky;
-      top:0;
-      z-index:10;
-      display:flex;align-items:center;gap:14px;
-      padding:14px 20px;
-      background:var(--surf);
-      border-bottom:1px solid var(--bord);
-    }
+    #form-tela{display:none;}
+    .form-header{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:14px;padding:14px 20px;background:var(--surf);border-bottom:1px solid var(--bord);}
     .btn-voltar{background:none;border:1px solid var(--bord);color:var(--muted);padding:8px 14px;border-radius:8px;cursor:pointer;font-size:13px;white-space:nowrap}
     .form-veiculo{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:22px}
     .form-sub{font-size:12px;color:var(--muted)}
@@ -669,7 +639,6 @@
 </head>
 <body>
 
-<!-- TELAS DE AUTH -->
 <div id="login-tela" class="auth-wrap" style="display:flex">
   <div class="auth-box">
     <div class="logo">FROTA<br>FIELD</div>
@@ -710,10 +679,7 @@
   <button class="btn-sair" onclick="fazerLogout()">Sair</button>
 </div>
 
-<!-- APP PRINCIPAL -->
 <div id="app-tela">
-
-  <!-- CABEÇALHO FIXO -->
   <div class="app-header">
     <div class="topbar">
       <div class="topbar-left">
@@ -730,25 +696,20 @@
       <button id="tab-prog" class="tab-btn" onclick="irAba('prog')">📅 Programação</button>
     </div>
   </div>
-
-  <!-- CONTEÚDO COM SCROLL -->
   <div class="app-content">
     <div id="lista-section">
       <div class="dia-label">Lançamentos do dia</div>
       <div id="lista-veiculos"><div style="text-align:center;padding:40px;color:var(--muted)">Carregando...</div></div>
     </div>
-
     <div id="prog-section" style="display:none">
       <div class="dia-label">Programação futura — selecione a data</div>
       <div class="date-picker-wrap" id="date-picker"></div>
       <div id="prog-lista"><div style="text-align:center;padding:40px;color:var(--muted)">Selecione uma data acima</div></div>
     </div>
-
     <div id="form-tela"></div>
   </div>
 </div>
 
-<!-- LEGENDA -->
 <div id="legenda-overlay" onclick="if(event.target===this)fecharLegenda()" style="display:none;position:fixed;inset:0;background:#000a;z-index:500;align-items:center;justify-content:center">
   <div style="background:#0e1a28;border:1px solid #1b2e42;border-radius:16px;padding:28px;width:90%;max-width:400px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
