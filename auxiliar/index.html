@@ -474,7 +474,13 @@
       return`<div class="fg"><label>${label}</label><input id="f-${id}" type="${type}" value="${v}" placeholder="${label}"></div>`;
     }
 
-    function recalc(){
+    function formatarDataParaPlanilha(val) {
+      if (!val) return '';
+      // yyyy-mm-dd → dd/mm/aa
+      const m = val.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (m) return `${m[3]}/${m[2]}/${m[1].slice(-2)}`;
+      return val; // já está no formato correto
+    }
       const g=id=>{const e=$('f-'+id);return e?e.value:'';};
       const s=(id,v)=>{const e=$(id);if(e&&v)e.textContent=v;};
       s('c-PREV',calcPrevisao(g('PONTO_ON')));
@@ -510,7 +516,7 @@
         MOTORISTA:g('MOTORISTA'),DESTINO:g('DESTINO'),
         PONTO_ON:g('PONTO_ON'),PREVISAO_REFEICAO:c('c-PREV'),
         SAIDA_VEICULO_CD:g('SAIDA_VEICULO_CD'),SM:g('SM'),
-        DATA_CARRG:g('DATA_CARRG'),ALMOCO:g('ALMOCO'),
+        DATA_CARRG:formatarDataParaPlanilha(g('DATA_CARRG')),ALMOCO:g('ALMOCO'),
         KM_SAIDA:g('KM_SAIDA'),LOJA_1:g('LOJA_1'),
         ABERTURA_1:g('ABERTURA_1'),FECHADO_1:g('FECHADO_1'),SAIDA_1:g('SAIDA_1'),
         TOTAL_LOJA_1:tl1,LOJA_2:g('LOJA_2'),
@@ -518,7 +524,7 @@
         TOTAL_LOJA_2:tl2,TOTAL_LOJA:calcTotalLoja(tl1,tl2),
         DIESEL_CHEGADA:g('DIESEL_CHEGADA'),CHEGADA_VEICULO_CD:g('CHEGADA_VEICULO_CD'),
         PONTO_OFF_MOT:g('PONTO_OFF_MOTO'),PONTO_OFF_MOTO:g('PONTO_OFF_MOTO'),
-        HORA_TOTAL_MOTORISTA:c('c-HTOT'),DATA_CHEGADA:g('DATA_CHEGADA'),KM_CHEGADA:g('KM_CHEGADA'),
+        HORA_TOTAL_MOTORISTA:c('c-HTOT'),DATA_CHEGADA:formatarDataParaPlanilha(g('DATA_CHEGADA')),KM_CHEGADA:g('KM_CHEGADA'),
         KM_PERCORRIDO:calcKmPerc(g('KM_SAIDA'),g('KM_CHEGADA')),OBSERVACOES:g('OBSERVACOES'),
         _por:currentUser.email,_em:serverTimestamp()
       };
