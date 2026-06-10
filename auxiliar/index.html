@@ -419,7 +419,7 @@
           ${fg('SM','SM','text',d.SM)}
           ${fg('DATA_CARRG','Data Carregamento','date',d.DATA_CARRG)}
           ${fg('KM_SAIDA','KM Saída','number',d.KM_SAIDA)}
-          ${fg('LOJA_1','Prev. Chegada 1ª Loja','time',d.LOJA_1)}
+          ${fg('LOJA_1','1ª Loja','time',d.LOJA_1)}
           ${fg('ABERTURA_1','Abertura 1ª Loja','time',d.ABERTURA_1)}
 
           <div class="sec-title formula-title">🔢 Calculados automaticamente</div>
@@ -433,10 +433,13 @@
           <div class="sec-title">🚛 Preenchimento em Campo</div>
           ${fg('FECHADO_1','Fechado 1ª Loja','time',d.FECHADO_1)}
           ${fg('SAIDA_1','Saída 1ª Loja','time',d.SAIDA_1)}
-          ${fg('LOJA_2','Prev. Chegada 2ª Loja','time',d.LOJA_2)}
+          ${currentPerfil.op === 'TL'
+            ? `<div style="background:#ffffff08;border:1px solid var(--bord);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--muted);margin-bottom:6px;text-align:center">🔒 2ª Loja não utilizada na operação TL</div>`
+            : `${fg('LOJA_2','2ª Loja','time',d.LOJA_2)}
           ${fg('ABERTURA_2','Abertura 2ª Loja','time',d.ABERTURA_2)}
           ${fg('FECHADO_2','Fechado 2ª Loja','time',d.FECHADO_2)}
-          ${fg('SAIDA_2','Saída 2ª Loja','time',d.SAIDA_2)}
+          ${fg('SAIDA_2','Saída 2ª Loja','time',d.SAIDA_2)}`
+          }
           ${fg('DIESEL_CHEGADA','Diesel Chegada (horário)','time',d.DIESEL_CHEGADA)}
           ${fg('CHEGADA_VEICULO_CD','Chegada Veículo CD','time',d.CHEGADA_VEICULO_CD)}
           ${fg('PONTO_OFF_MOTO','Ponto OFF Motorista (registrado no CD)','time',d.PONTO_OFF_MOT||d.PONTO_OFF_MOTO)}
