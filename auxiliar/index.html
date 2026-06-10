@@ -524,18 +524,17 @@
         DATA:dadosForm.DATA||hojeISO(),OP:currentPerfil.op,
         VEICULO:g('VEICULO')||dadosForm.VEICULO||'',
         MOTORISTA:g('MOTORISTA'),DESTINO:g('DESTINO'),
-        PONTO_ON:g('PONTO_ON'),PREVISAO_REFEICAO:c('c-PREV'),
+        PONTO_ON:g('PONTO_ON'),
         SAIDA_VEICULO_CD:g('SAIDA_VEICULO_CD'),SM:g('SM'),
-        DATA_CARRG:deDateInput(g('DATA_CARRG')),ALMOCO:g('ALMOCO'),
+        DATA_CARRG:deDateInput(g('DATA_CARRG')),
         KM_SAIDA:g('KM_SAIDA'),LOJA_1:g('LOJA_1'),
         ABERTURA_1:g('ABERTURA_1'),FECHADO_1:g('FECHADO_1'),SAIDA_1:g('SAIDA_1'),
-        TOTAL_LOJA_1:tl1,LOJA_2:g('LOJA_2'),
+        LOJA_2:g('LOJA_2'),
         ABERTURA_2:g('ABERTURA_2'),FECHADO_2:g('FECHADO_2'),SAIDA_2:g('SAIDA_2'),
-        TOTAL_LOJA_2:tl2,TOTAL_LOJA:calcTotalLoja(tl1,tl2),
         DIESEL_CHEGADA:g('DIESEL_CHEGADA'),CHEGADA_VEICULO_CD:g('CHEGADA_VEICULO_CD'),
         PONTO_OFF_MOT:g('PONTO_OFF_MOTO'),PONTO_OFF_MOTO:g('PONTO_OFF_MOTO'),
-        HORA_TOTAL_MOTORISTA:c('c-HTOT'),DATA_CHEGADA:deDateInput(g('DATA_CHEGADA')),KM_CHEGADA:g('KM_CHEGADA'),
-        KM_PERCORRIDO:calcKmPerc(g('KM_SAIDA'),g('KM_CHEGADA')),OBSERVACOES:g('OBSERVACOES'),
+        DATA_CHEGADA:deDateInput(g('DATA_CHEGADA')),KM_CHEGADA:g('KM_CHEGADA'),
+        OBSERVACOES:g('OBSERVACOES'),
         _por:currentUser.email,_em:serverTimestamp()
       };
       const btn=document.querySelector('.btn-salvar');
