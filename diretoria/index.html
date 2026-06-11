@@ -12,7 +12,7 @@
   <script>
     const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTd77MkT5hd6gzTkMfzX2BVWY5Hqqfo3NluQY58mnOklN8--hPVIoe2CfzkbttnucJKbnJFiaPEWSmR/pub?gid=1559964021&single=true&output=csv';
     const SYNC_INTERVAL = 5 * 60 * 1000;
-    const OP_CORES = {LS:'#e84040', TL:'#2ed573', HT:'#27ae60', CV:'#f5d800'};
+    const OP_CORES = {LS:'#e84040', TL:'#2ed573', HT:'#1a6bbf', CV:'#f5d800'};
 
     let todosLanc = [];
     let filtroOp = 'TODAS';
@@ -411,7 +411,7 @@
       <button class="btn-op ativo" data-op="TODAS" onclick="setFiltroOp('TODAS')">Todas</button>
       <button class="btn-op" data-op="LS" onclick="setFiltroOp('LS')" style="color:#e84040;border-color:#e84040">LS</button>
       <button class="btn-op" data-op="TL" onclick="setFiltroOp('TL')" style="color:#2ed573;border-color:#2ed573">TL</button>
-      <button class="btn-op" data-op="HT" onclick="setFiltroOp('HT')" style="color:#27ae60;border-color:#27ae60">HT</button>
+      <button class="btn-op" data-op="HT" onclick="setFiltroOp('HT')" style="color:#1a6bbf;border-color:#1a6bbf">HT</button>
       <button class="btn-op" data-op="CV" onclick="setFiltroOp('CV')" style="color:#f5d800;border-color:#f5d800">CV</button>
     </div>
     <div class="tab-wrap">
