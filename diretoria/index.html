@@ -92,10 +92,10 @@
       if (v.CHEGADA_VEICULO_CD && v.KM_CHEGADA) return {key:'concluido', label:'Concluído',   cor:'#34d399'};
       if (v.SAIDA_1 || v.ABERTURA_1)            return {key:'rota',      label:'Em rota',     cor:'#fbbf24'};
       const saidaMin = tMin(v.SAIDA_VEICULO_CD);
-      if (saidaMin !== null) {
-        if (isHoje && hMin >= saidaMin) return {key:'transito', label:'Em trânsito', cor:'#f97316'};
-        return {key:'iniciado', label:'Iniciado', cor:'#4da6ff'};
-      }
+      // Só considera "Em trânsito" quando o horário atual já ultrapassou
+      // o horário programado de saída. Ter um horário cadastrado não
+      // significa que o veículo já saiu — antes disso continua Pendente.
+      if (saidaMin !== null && isHoje && hMin >= saidaMin) return {key:'transito', label:'Em trânsito', cor:'#f97316'};
       return {key:'pendente', label:'Pendente', cor:'#6b8099'};
     }
 
@@ -142,7 +142,7 @@
       // KPIs principais
       document.getElementById('kpi-total').textContent   = esc.length || '—';
       document.getElementById('kpi-conc').textContent    = esc.filter(v=>calcStatus(v).key==='concluido').length;
-      document.getElementById('kpi-op').textContent      = esc.filter(v=>['rota','transito','iniciado'].includes(calcStatus(v).key)).length;
+      document.getElementById('kpi-op').textContent      = esc.filter(v=>['rota','transito'].includes(calcStatus(v).key)).length;
       document.getElementById('kpi-pend').textContent    = esc.filter(v=>calcStatus(v).key==='pendente').length;
 
       // Barras por OP
@@ -169,7 +169,7 @@
 
     function renderTabela(esc) {
       let lista = filtroOp === 'TODAS' ? [...esc] : esc.filter(v=>v.OP===filtroOp);
-      const ord = {pendente:0,iniciado:1,transito:2,rota:3,concluido:4};
+      const ord = {pendente:0,transito:1,rota:2,concluido:3};
       lista.sort((a,b)=>(ord[calcStatus(a).key]||0)-(ord[calcStatus(b).key]||0));
 
       const cnt = document.getElementById('cnt-label');
