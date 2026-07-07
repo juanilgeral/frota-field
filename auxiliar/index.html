@@ -183,7 +183,7 @@
       if (!snap.exists()) {
         setTimeout(async () => {
           const snap2 = await getDoc(doc(db,'usuarios', user.uid));
-          if (!snap2.exists()) { await signOut(auth); mostrarTela('login'); return; }
+          if (!snap2.exists()) { await signOut(auth); mostrarTela('login'); erroLogin('Cadastro não encontrado para este usuário. Contate o administrador.'); return; }
           currentPerfil = snap2.data();
           if (currentPerfil.status === 'pendente') { mostrarTela('aguardando'); return; }
           if (currentPerfil.status === 'bloqueado'){ mostrarTela('bloqueado');  return; }
@@ -203,7 +203,7 @@
       ['login','cadastro','aguardando','bloqueado'].forEach(t => { const el=$(t+'-tela'); if(el) el.style.display='none'; });
       const appEl=$('app-tela'); const formEl=$('form-tela');
       if(appEl) appEl.style.display='none';
-      if(nome==='login')         {$('login-tela').style.display='flex';}
+      if(nome==='login')         {$('login-tela').style.display='flex'; const btn=$('btn-login'); if(btn){btn.disabled=false;btn.textContent='ENTRAR';}}
       else if(nome==='cadastro') {$('cadastro-tela').style.display='flex';}
       else if(nome==='aguardando'){$('aguardando-tela').style.display='flex';}
       else if(nome==='bloqueado'){$('bloqueado-tela').style.display='flex';}
