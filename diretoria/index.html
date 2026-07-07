@@ -32,8 +32,8 @@
 
     // ATENÇÃO: A planilha teve uma coluna nova inserida (PONTO_OFF_MOTO.)
     // antes da coluna DESTINO, o que empurrou todas as colunas seguintes
-    // uma posição para frente. Os índices abaixo foram corrigidos e
-    // conferidos linha a linha contra o CSV real em 04/07/2026.
+    // uma posição para frente. Índices realinhados em 07/07/2026 para
+    // bater com o mapeamento já corrigido em tele-rio/index.html.
     function parseLine(line) {
       const cols = []; let cur = '', inQ = false;
       for (let i = 0; i < line.length; i++) {
@@ -50,17 +50,18 @@
         VEICULO:            cols[3]  || '',
         MOTORISTA:          cols[4]  || '',
         PONTO_ON:           cols[5]  || '',
-        PREVISAO_REFEICAO:  cols[7]  || '',
-        DESTINO:            cols[8]  || '',
-        SAIDA_VEICULO_CD:   cols[9]  || '',
-        SM:                 cols[11] || '',
-        ABERTURA_1:         cols[17] || '',
-        SAIDA_1:            cols[19] || '',
-        CHEGADA_VEICULO_CD: cols[28] || '',
-        PONTO_OFF_MOT:      cols[29] || '',
-        HORA_TOTAL:         cols[30] || '',
-        KM_CHEGADA:         cols[32] || '',
-        KM_PERCORRIDO:      cols[34] || '',
+        PREVISAO_REFEICAO:  cols[6]  || '',
+        PONTO_OFF_MOTO:     cols[7]  || '',
+        DESTINO:            cols[9]  || '',
+        SAIDA_VEICULO_CD:   cols[10] || '',
+        SM:                 cols[12] || '',
+        ABERTURA_1:         cols[18] || '',
+        SAIDA_1:            cols[20] || '',
+        CHEGADA_VEICULO_CD: cols[29] || '',
+        PONTO_OFF_MOT:      cols[30] || '',
+        HORA_TOTAL:         cols[31] || '',
+        KM_CHEGADA:         cols[33] || '',
+        KM_PERCORRIDO:      cols[35] || '',
       };
     }
 
